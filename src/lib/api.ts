@@ -1,0 +1,75 @@
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api';
+
+export function getToken(): string | null {
+  return localStorage.getItem('rentx_token');
+}
+
+export function setToken(token: string): void {
+  localStorage.setItem('rentx_token', token);
+}
+
+export function clearToken(): void {
+  localStorage.removeItem('rentx_token');
+  localStorage.removeItem('rentx_user');
+}
+
+async function request<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const isFormData = init.body instanceof FormData;
+
+  const headers: Record<string, string> = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error((data as { message?: string }).message ?? 'Request failed');
+  }
+
+  return data as T;
+}
+
+export const api = {
+  auth: {
+    login: (email: string, password: string) =>
+      request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+    register: (payload: {
+      name: string;
+      username: string;
+      email: string;
+      password: string;
+      phone: string;
+      location: string;
+    }) => request('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+
+    verifyEmail: (email: string) =>
+      request('/auth/verify-email', { method: 'POST', body: JSON.stringify({ email }) }),
+
+    confirmOtp: (email: string, otp: string) =>
+      request('/auth/confirm-otp', { method: 'POST', body: JSON.stringify({ email, otp }) }),
+
+    updateAvatar: (formData: FormData) =>
+      request<{ success: boolean; avatar: string }>('/auth/avatar', { method: 'PATCH', body: formData }),
+  },
+
+  chat: {
+    getAll: () => request<{ success: boolean; data: unknown[] }>('/chat'),
+    uploadImage: (formData: FormData) =>
+      request<{ success: boolean; url: string; publicId: string }>('/chat/image', { method: 'POST', body: formData }),
+  },
+
+  products: {
+    getAll: () => request<{ success: boolean; data: unknown[] }>('/products'),
+    getById: (id: string) => request<{ success: boolean; data: unknown }>(`/products/${id}`),
+    getUserProducts: () => request<{ success: boolean; data: unknown[] }>('/products/user'),
+    create: (formData: FormData) =>
+      request('/products', { method: 'POST', body: formData }),
+
+    update: (id: string, body: Record<string, unknown>) =>
+      request(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  },
+};
