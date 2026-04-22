@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock,
   Edit2,
-  Heart,
   MapPin,
   MessageCircle,
   Share2,
@@ -41,6 +40,18 @@ interface EditForm {
   tags: string;
 }
 
+interface ChatParticipant {
+  id: string;
+  username: string;
+  chatId: string;
+}
+
+interface RentForm {
+  selectedUserId: string; // 'other' or a user id
+  startDate: string;
+  endDate: string;
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -49,7 +60,6 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
-  const [wishlist, setWishlist] = useState(false);
   const [loginModal, setLoginModal] = useState(false);
   const [rentDays, setRentDays] = useState(1);
 
@@ -62,6 +72,13 @@ export default function ProductDetailPage() {
   const [related, setRelated] = useState<Product[]>([]);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
+
+  // Rent-out modal state
+  const [rentOutOpen, setRentOutOpen] = useState(false);
+  const [chatParticipants, setChatParticipants] = useState<ChatParticipant[]>([]);
+  const [rentForm, setRentForm] = useState<RentForm>({ selectedUserId: '', startDate: '', endDate: '' });
+  const [rentError, setRentError] = useState('');
+  const [rentLoading, setRentLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -151,17 +168,71 @@ export default function ProductDetailPage() {
     }
   };
 
-  const handleToggleStatus = async () => {
+  /* ── Open rent-out modal (available → rented) ── */
+  const openRentOutModal = async () => {
     if (!product) return;
-    const newStatus = product.available ? 'rented' : 'available';
+    setRentError('');
+    setRentForm({ selectedUserId: '', startDate: '', endDate: '' });
+    setRentOutOpen(true);
+
+    try {
+      const res = await api.products.getChatParticipants(product.mongoId ?? product.id) as { data: ChatParticipant[] };
+      setChatParticipants(res.data ?? []);
+    } catch {
+      setChatParticipants([]);
+    }
+  };
+
+  /* ── Submit rent-out form ── */
+  const handleRentOut = async () => {
+    if (!product) return;
+    if (!rentForm.selectedUserId) { setRentError('Please select a renter.'); return; }
+    if (!rentForm.startDate || !rentForm.endDate) { setRentError('Please select start and end dates.'); return; }
+    if (new Date(rentForm.endDate) <= new Date(rentForm.startDate)) {
+      setRentError('End date must be after start date.');
+      return;
+    }
+
+    setRentLoading(true);
+    setRentError('');
+    try {
+      const isOther = rentForm.selectedUserId === 'other';
+      await api.products.updateStatus(product.mongoId ?? product.id, {
+        status: 'rented',
+        rentedUserId: isOther ? undefined : rentForm.selectedUserId,
+        isExternalRenter: isOther,
+        startDate: rentForm.startDate,
+        endDate: rentForm.endDate,
+      });
+      setProduct(prev => prev ? { ...prev, available: false } : prev);
+      setRentOutOpen(false);
+    } catch (err) {
+      setRentError((err as Error).message ?? 'Failed to update status.');
+    } finally {
+      setRentLoading(false);
+    }
+  };
+
+  /* ── Mark available again (rented → available) ── */
+  const handleMarkAvailable = async () => {
+    if (!product) return;
     setStatusLoading(true);
     try {
-      const res = await api.products.update(product.mongoId ?? product.id, { status: newStatus }) as { data: unknown };
-      setProduct(mapApiProduct(res.data));
+      await api.products.updateStatus(product.mongoId ?? product.id, { status: 'available' });
+      setProduct(prev => prev ? { ...prev, available: true } : prev);
     } catch {
-      // silently fail — status indicator stays as-is
+      // silently fail
     } finally {
       setStatusLoading(false);
+    }
+  };
+
+  const handleToggleStatus = () => {
+    if (!product) return;
+    if (product.available) {
+      openRentOutModal();
+    } else {
+      handleMarkAvailable();
     }
   };
 
@@ -190,8 +261,6 @@ export default function ProductDetailPage() {
       url,
     };
 
-    // Prefer Web Share API when the browser supports it (mobile + desktop Safari / Chrome, etc.).
-    // Do NOT gate on maxTouchPoints — that is 0 on most desktops, which incorrectly disabled share.
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share(payload);
@@ -282,14 +351,6 @@ export default function ProductDetailPage() {
                 </>
               )}
               <div className="absolute top-3 right-3 flex gap-2">
-                {/* {!isOwner && (
-                  <button
-                    onClick={() => setWishlist(w => !w)}
-                    className={`w-9 h-9 rounded-full flex items-center justify-center shadow-card transition-all ${wishlist ? 'bg-red-500 text-white' : 'bg-white/90 text-brown-500 hover:text-red-500'}`}
-                  >
-                    <Heart size={16} className={wishlist ? 'fill-current' : ''} />
-                  </button>
-                )} */}
                 <button
                   onClick={handleShare}
                   className="w-9 h-9 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-card text-brown-500 hover:text-brown-700 transition-all"
@@ -349,13 +410,12 @@ export default function ProductDetailPage() {
               {/* ── OWNER panel ── */}
               {isOwner ? (
                 <div className="space-y-3">
-                  {/* Availability toggle */}
                   <div className="rounded-xl bg-cream-50 border border-cream-300 p-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-brown-700">Availability</p>
                         <p className={`text-xs mt-0.5 font-semibold ${product.available ? 'text-green-600' : 'text-red-500'}`}>
-                          {product.available ? 'Available for rent' : 'Marked as unavailable'}
+                          {product.available ? 'Available for rent' : 'Currently rented out'}
                         </p>
                       </div>
                       <button
@@ -370,12 +430,11 @@ export default function ProductDetailPage() {
                         ) : (
                           <ToggleLeft size={28} className="text-brown-300" />
                         )}
-                        {product.available ? 'Mark Unavailable' : 'Mark Available'}
+                        {product.available ? 'Mark as Rented' : 'Mark Available'}
                       </button>
                     </div>
                   </div>
 
-                  {/* Edit button */}
                   <Button onClick={openEdit} variant="secondary" className="w-full">
                     <Edit2 size={15} /> Edit Listing
                   </Button>
@@ -569,6 +628,63 @@ export default function ProductDetailPage() {
           <div className="flex gap-3 pt-1">
             <Button onClick={handleEditSave} loading={editLoading} className="flex-1">Save Changes</Button>
             <Button variant="secondary" onClick={() => setEditOpen(false)} className="flex-1">Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Rent-out modal ── */}
+      <Modal open={rentOutOpen} onClose={() => setRentOutOpen(false)} title="Mark as Rented" maxWidth="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-brown-500">
+            Record who rented this product and the rental period. Other chats will be notified and deleted in 24 hours.
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">Rented to</label>
+            <select
+              value={rentForm.selectedUserId}
+              onChange={e => setRentForm(f => ({ ...f, selectedUserId: e.target.value }))}
+              className="input-field"
+            >
+              <option value="">Select a renter…</option>
+              {chatParticipants.map(p => (
+                <option key={p.id} value={p.id}>{p.username}</option>
+              ))}
+              <option value="other">Other (not on RentX)</option>
+            </select>
+            {chatParticipants.length === 0 && (
+              <p className="text-xs text-brown-400 mt-1">No app users have chatted about this product yet.</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-brown-700 mb-1.5">Start date</label>
+              <input
+                type="date"
+                value={rentForm.startDate}
+                onChange={e => setRentForm(f => ({ ...f, startDate: e.target.value }))}
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-brown-700 mb-1.5">End date</label>
+              <input
+                type="date"
+                value={rentForm.endDate}
+                onChange={e => setRentForm(f => ({ ...f, endDate: e.target.value }))}
+                className="input-field"
+              />
+            </div>
+          </div>
+
+          {rentError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">{rentError}</div>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <Button onClick={handleRentOut} loading={rentLoading} className="flex-1">Confirm Rental</Button>
+            <Button variant="secondary" onClick={() => setRentOutOpen(false)} className="flex-1">Cancel</Button>
           </div>
         </div>
       </Modal>

@@ -29,6 +29,7 @@ const STEPS: { key: Step; label: string }[] = [
 
 export default function ListProductPage() {
   const { isAuthenticated, user } = useAuth();
+  console.log(user)
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,8 +94,9 @@ export default function ListProductPage() {
       formData.append('category', form.category);
       formData.append('condition', form.condition);
       formData.append('location', form.location);
+      formData.append('email', user.email);
       imageFiles.forEach(file => formData.append('images', file));
-
+      console.log(Object.fromEntries(formData));
       await api.products.create(formData);
       setStep('done');
     } catch (err) {

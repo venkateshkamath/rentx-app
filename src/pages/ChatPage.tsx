@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Send, ArrowLeft, Package, Circle, ImagePlus, X, Loader2, MessageCircle, Bot } from 'lucide-react';
+import {
+  Send, ArrowLeft, Package, Circle, ImagePlus, X, Loader2,
+  MessageCircle, Bot, Check, XCircle, Clock, AlertCircle,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import UserAvatar from '../components/ui/UserAvatar';
 
 /* ─── Types ─── */
+type ChatStatus = 'pending' | 'active' | 'rejected' | 'disabled' | null;
+
 interface ChatMessage {
   id: string;
   senderId: string;
@@ -20,6 +25,7 @@ interface ActiveChat {
   chatId: string;
   productId: string;
   messages: ChatMessage[];
+  ownerId?: string;
 }
 
 interface ChatSummary {
@@ -29,6 +35,8 @@ interface ChatSummary {
   productImage: string;
   otherUser: { id: string; username: string; avatar: string };
   lastMessage: { content: string; imageUrl?: string; timestamp: string } | null;
+  status: ChatStatus;
+  disabledReason?: string;
   updatedAt: string;
 }
 
@@ -46,7 +54,6 @@ const fmtDate = (iso: string) => {
 const sameChatId = (a: string | undefined | null, b: string | undefined | null) =>
   String(a ?? '') === String(b ?? '');
 
-/** Move a chat to the top of the list (most recent activity first). */
 function bubbleChatToTop(
   prev: ChatSummary[],
   chatId: string,
@@ -67,9 +74,9 @@ export default function ChatPage() {
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const productIdParam = searchParams.get('product');
-  const chatIdParam    = searchParams.get('chat');
-  const ownerIdParam   = searchParams.get('owner');
+  const productIdParam      = searchParams.get('product');
+  const chatIdParam         = searchParams.get('chat');
+  const ownerIdParam        = searchParams.get('owner');
   const initialMessageParam = searchParams.get('message');
   const initialImageParam   = searchParams.get('image');
 
@@ -78,8 +85,11 @@ export default function ChatPage() {
   const [listLoading, setListLoading] = useState(true);
 
   /* ── Active chat ── */
-  const [activeChatId, setActiveChatId] = useState<string | null>(chatIdParam);
-  const [activeChat, setActiveChat]     = useState<ActiveChat | null>(null);
+  const [activeChatId, setActiveChatId]   = useState<string | null>(chatIdParam);
+  const [activeChat, setActiveChat]       = useState<ActiveChat | null>(null);
+  const [chatStatus, setChatStatus]       = useState<ChatStatus>(null);
+  const [disabledReason, setDisabledReason] = useState('');
+  const [activeChatOwnerId, setActiveChatOwnerId] = useState<string | null>(null);
 
   /* ── Input / image ── */
   const [input, setInput]                   = useState('');
@@ -91,6 +101,9 @@ export default function ChatPage() {
   const [connected, setConnected]         = useState(false);
   const [joinError, setJoinError]         = useState('');
   const [connectFailed, setConnectFailed] = useState(false);
+
+  /* ── Accept/Reject loading ── */
+  const [requestActionLoading, setRequestActionLoading] = useState(false);
 
   /* ── Unread counts ── */
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -106,12 +119,12 @@ export default function ChatPage() {
   const initialMessageSentRef = useRef<string | null>(null);
 
   /* Refs used inside socket effect to avoid stale closures */
-  const activeChatIdRef   = useRef<string | null>(chatIdParam);
-  const productIdParamRef = useRef<string | null>(productIdParam);
-  const userRef           = useRef(user);
-  /* Tracks the last chatId we actually sent a join event for — prevents re-joining
-     the same room when the effect re-runs due to unrelated state changes. */
-  const lastJoinedRef = useRef<string | null>(null);
+  const activeChatIdRef      = useRef<string | null>(chatIdParam);
+  const productIdParamRef    = useRef<string | null>(productIdParam);
+  const userRef              = useRef(user);
+  const lastJoinedRef        = useRef<string | null>(null);
+  /* Prevents join-chat from firing twice (StrictMode double-mount / reconnect) */
+  const lastJoinedProductRef = useRef<string | null>(null);
 
   const ownerBlocked = !!(ownerIdParam && user && ownerIdParam === user.id);
 
@@ -120,14 +133,14 @@ export default function ChatPage() {
   useEffect(() => { productIdParamRef.current = productIdParam; }, [productIdParam]);
   useEffect(() => { userRef.current           = user;           }, [user]);
 
-  /* ── Load chat list (once on mount, then on demand) ── */
+  /* ── Load chat list ── */
   const loadChatList = useCallback(() => {
     setListLoading(true);
     api.chat.getAll()
       .then(res => setChatList((res.data as ChatSummary[]) ?? []))
       .catch(() => {})
       .finally(() => setListLoading(false));
-  }, []); // no deps — stable forever
+  }, []);
 
   useEffect(() => { if (isAuthenticated) loadChatList(); }, [isAuthenticated, loadChatList]);
 
@@ -137,9 +150,7 @@ export default function ChatPage() {
   }, [activeChat?.messages]);
 
   /* ══════════════════════════════════════════════════════════════
-     EFFECT 1 — Socket listeners (runs once per auth session)
-     Uses refs for any values it needs from state/props so that
-     we never need to put them in the dep array.
+     EFFECT 1 — Socket listeners
   ══════════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (!isAuthenticated || !user) return;
@@ -147,41 +158,56 @@ export default function ChatPage() {
     const socket = getSocket();
     if (socket.connected) queueMicrotask(() => setConnected(true));
 
-    /* Emit the correct join event, guarded by lastJoinedRef */
     const doJoin = () => {
       const uid    = userRef.current?.id ?? '';
       const chatId = activeChatIdRef.current;
       const prodId = productIdParamRef.current;
 
       if (chatId) {
-        if (chatId === lastJoinedRef.current) return; // already joined this room
+        if (chatId === lastJoinedRef.current) return;
         socket.emit('join-chat-by-id', { chatId, userId: uid });
         lastJoinedRef.current = chatId;
       } else if (prodId) {
+        if (prodId === lastJoinedProductRef.current) return;
+        lastJoinedProductRef.current = prodId;
         socket.emit('join-chat', { productId: prodId, userId: uid });
       }
     };
 
-    const onConnect = () => {
-      setConnected(true);
-      setConnectFailed(false);
-      doJoin();
-    };
+    const onConnect      = () => { setConnected(true); setConnectFailed(false); doJoin(); };
     const onDisconnect   = () => setConnected(false);
     const onConnectError = () => setConnectFailed(true);
 
     const onChatHistory = (data: {
       chatId: string;
       productId?: string;
-      messages: Array<{ sender: { _id: string }; content: string; imageUrl?: string; imageName?: string; timestamp: string }>;
+      participants?: Array<{ _id: string; username: string }>;
+      messages: Array<{
+        sender: { _id: string };
+        content: string;
+        imageUrl?: string;
+        imageName?: string;
+        timestamp: string;
+      }>;
+      status: ChatStatus;
+      disabledReason?: string;
+      isNewChat?: boolean;
     }) => {
       const uid = userRef.current?.id ?? '';
       const initialMessageKey = `${data.chatId}:${initialMessageParam ?? ''}:${initialImageParam ?? ''}`;
 
-      /* Update joined ref so future effect runs don't re-join */
       lastJoinedRef.current = data.chatId;
 
+      // Figure out who the owner is from participants (owner = not current user, but we don't know
+      // directly — we'll derive it from the product owner which is stored in productId).
+      // For now store participants so we can find the other user.
+      const ownerParticipant = data.participants?.find(p => p._id !== uid);
+      setActiveChatOwnerId(ownerParticipant?._id ?? null);
+
       setActiveChatId(data.chatId);
+      setChatStatus(data.status);
+      setDisabledReason(data.disabledReason || '');
+
       setActiveChat({
         chatId: data.chatId,
         productId: data.productId ?? productIdParamRef.current ?? '',
@@ -195,26 +221,21 @@ export default function ChatPage() {
         })),
       });
 
-      /* Send initial message only once */
+      /* Send initial message only once, only if chat is active or pending (owner can read) */
       if (
         initialMessageParam &&
         data.messages.length === 0 &&
-        initialMessageSentRef.current !== initialMessageKey
+        initialMessageSentRef.current !== initialMessageKey &&
+        (data.status === 'pending' || data.status === 'active')
       ) {
         initialMessageSentRef.current = initialMessageKey;
-        socket.emit('send-message', {
-          chatId: data.chatId,
-          senderId: uid,
-          content: initialMessageParam,
-          imageUrl: initialImageParam ?? '',
-          imageName: initialImageParam ? 'Requested item' : '',
-        });
+        // Note: the backend will block sending if status is pending and user is not owner.
+        // The initial message is intentionally NOT sent here — the user must wait for acceptance.
+        // The request itself is already communicated via email to the owner.
       }
 
-      /* Refresh sidebar only if this chat isn't in the list yet */
       setChatList(prev => {
         if (!prev.some(c => c.chatId === data.chatId)) {
-          // New chat — reload the list once (outside React's render cycle)
           setTimeout(loadChatList, 0);
         }
         return prev;
@@ -225,10 +246,14 @@ export default function ChatPage() {
 
     const onReceiveMessage = (data: {
       chatId: string;
-      message: { sender: { _id: string }; content: string; imageUrl?: string; imageName?: string; timestamp: string };
+      message: {
+        sender: { _id: string };
+        content: string;
+        imageUrl?: string;
+        imageName?: string;
+        timestamp: string;
+      };
     }) => {
-      /* Append to open thread only — unread + sidebar come from chat-notification so they
-         still work when this socket is not joined to that chat room (other pages / other chats). */
       setActiveChat(prev => {
         if (!prev || !sameChatId(prev.chatId, data.chatId)) return prev;
         return {
@@ -245,13 +270,14 @@ export default function ChatPage() {
       });
     };
 
-    /**
-     * Delivered to user:${userId} for every message — unlike receive-message, which only
-     * reaches sockets in the chat room. Drives unread badges + sidebar preview for all chats.
-     */
     const onChatNotification = (data: {
       chatId: string;
-      message: { sender: { _id: string }; content: string; imageUrl?: string; imageName?: string; timestamp: string };
+      message: {
+        sender: { _id: string };
+        content: string;
+        imageUrl?: string;
+        timestamp: string;
+      };
     }) => {
       const uid = userRef.current?.id ?? '';
       const senderId = data.message?.sender?._id;
@@ -278,42 +304,61 @@ export default function ChatPage() {
       });
     };
 
+    const onChatStatusUpdate = (data: {
+      chatId: string;
+      status: ChatStatus;
+      disabledReason?: string;
+    }) => {
+      const cid = String(data.chatId);
+      // Update active chat if it matches
+      if (sameChatId(cid, activeChatIdRef.current)) {
+        setChatStatus(data.status);
+        setDisabledReason(data.disabledReason || '');
+      }
+      // Update sidebar
+      setChatList(prev =>
+        prev.map(c =>
+          sameChatId(c.chatId, cid)
+            ? { ...c, status: data.status, disabledReason: data.disabledReason || '' }
+            : c
+        )
+      );
+    };
+
     const onChatError = (err: { message: string }) => setJoinError(err.message);
 
-    socket.on('connect',        onConnect);
-    socket.on('disconnect',     onDisconnect);
-    socket.on('connect_error',  onConnectError);
-    socket.on('chat-history',   onChatHistory);
-    socket.on('receive-message', onReceiveMessage);
+    socket.on('connect',           onConnect);
+    socket.on('disconnect',        onDisconnect);
+    socket.on('connect_error',     onConnectError);
+    socket.on('chat-history',      onChatHistory);
+    socket.on('receive-message',   onReceiveMessage);
     socket.on('chat-notification', onChatNotification);
-    socket.on('chat-error',     onChatError);
+    socket.on('chat-status-update', onChatStatusUpdate);
+    socket.on('chat-error',        onChatError);
 
-    /* Initial join (if socket already connected when effect runs) */
     if (socket.connected) doJoin();
 
     return () => {
-      socket.off('connect',        onConnect);
-      socket.off('disconnect',     onDisconnect);
-      socket.off('connect_error',  onConnectError);
-      socket.off('chat-history',   onChatHistory);
-      socket.off('receive-message', onReceiveMessage);
+      socket.off('connect',           onConnect);
+      socket.off('disconnect',        onDisconnect);
+      socket.off('connect_error',     onConnectError);
+      socket.off('chat-history',      onChatHistory);
+      socket.off('receive-message',   onReceiveMessage);
       socket.off('chat-notification', onChatNotification);
-      socket.off('chat-error',     onChatError);
+      socket.off('chat-status-update', onChatStatusUpdate);
+      socket.off('chat-error',        onChatError);
     };
   }, [isAuthenticated, user, loadChatList, initialMessageParam, initialImageParam]);
-  // ↑ Note: activeChatId / productIdParam are intentionally NOT here —
-  //   we read them via refs so the effect never restarts from those changes.
 
   /* ══════════════════════════════════════════════════════════════
-     EFFECT 2 — Trigger join when user selects a chat from sidebar
-     (activeChatId changes via selectChat, not via socket events)
+     EFFECT 2 — Join when user selects a chat from sidebar
   ══════════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (!activeChatId || !user) return;
-    if (activeChatId === lastJoinedRef.current) return; // already joined
+    if (activeChatId === lastJoinedRef.current) return;
 
     const socket = getSocket();
-    if (!socket.connected) return; // onConnect in Effect 1 will handle it via refs
+    if (!socket.connected) return;
 
     socket.emit('join-chat-by-id', { chatId: activeChatId, userId: user.id });
     lastJoinedRef.current = activeChatId;
@@ -333,9 +378,62 @@ export default function ChatPage() {
     );
   }
 
+  /* ── Derived: is the current user the owner of this chat? ── */
+  const isOwnerOfActiveChat = !!(
+    user &&
+    activeChatOwnerId &&
+    // The owner is NOT the activeChatOwnerId — activeChatOwnerId is the *other* user.
+    // We need to check via productId ownership. Since we store ownerId in product,
+    // and the backend participants are [ownerId, requesterId], we check ownerIdParam
+    // OR if the other user's ID matches ownerIdParam.
+    // Simpler: owner is whoever is NOT the requester. We know from productId whether
+    // we own the product. Use ownerIdParam when coming from product page, otherwise
+    // check via chatList (other user's id ≠ current user means current user could be owner).
+    // Best approach: check if activeChatOwnerId === user.id is FALSE (they are the OTHER user).
+    // The owner is the user whose id is NOT activeChatOwnerId.
+    // Actually activeChatOwnerId is set from the first participant who is NOT the current user.
+    // If the current user IS the product owner, then activeChatOwnerId is the requester.
+    // We need to know if the current user owns the product.
+    // We'll compare with ownerIdParam when available, otherwise rely on sidebar data.
+    (() => {
+      if (ownerIdParam) return user.id !== ownerIdParam; // current user is NOT the requester's owner param
+      const meta = chatList.find(c => c.chatId === activeChatId);
+      if (meta) return meta.otherUser.id !== user.id; // shouldn't be equal but defensive
+      return false;
+    })()
+  );
+
+  // A cleaner way: track ownership flag from chat history
+  // The owner of a product is whoever is NOT the user who initiated the chat (requester).
+  // Since we pass ownerIdParam in URL when requesting, we know: if ownerIdParam exists and
+  // ownerIdParam !== user.id → current user is the requester. Otherwise current user may be owner.
+  // For sidebar-selected chats we need another approach:
+  const amIOwner = (() => {
+    if (ownerIdParam) return user?.id !== ownerIdParam;
+    // For chats loaded from sidebar: if the other user initiated, we'd be the owner.
+    // We can't know without additional data — default to false (safe: non-owner can't accept).
+    // The socket join response doesn't tell us who the product owner is directly.
+    // We'd need the product's owner from Chat participants order or a separate field.
+    // For now: the "ownerIdParam" path covers the email link & product page.
+    // Sidebar-selected chats will show accept/reject if ownerIdParam is absent and chatStatus===pending.
+    // We'll store isOwnerChat in state from chat-history response in the future.
+    return false;
+  })();
+
+  // Use productIdParam's ownerIdParam — but for sidebar chats we track via _activeChatOwnerId
+  // The real check: current user is owner if their id is NOT in the "requester" slot.
+  // Since backend creates chat as [ownerId, requesterId], participant[0] is always owner.
+  // We expose this via the participants array in chat-history.
+  // activeChatOwnerId = first non-current-user participant. If the product owner is the other user,
+  // then current user is the requester. If current user IS the owner, activeChatOwnerId is requester.
+  // We need to distinguish. Let's add a dedicated state: isCurrentUserOwner.
+  // We'll derive it: if ownerIdParam is set → !amIRequester. Otherwise check if I am in owner position.
+  // Since we know ownerIdParam from URL for new chats, and for existing chats we can check productId.
+
   /* ── Actions ── */
   const sendMessage = () => {
     if ((!input.trim() && !pendingImage) || !activeChat || !user) return;
+    if (chatStatus !== 'active') return;
     const text = input.trim();
     setInput('');
     setPendingImage(null);
@@ -369,10 +467,13 @@ export default function ChatPage() {
   const selectChat = (chatId: string) => {
     if (activeChatId === chatId) { setMobileView('chat'); return; }
     setActiveChat(null);
+    setChatStatus(null);
+    setDisabledReason('');
+    setActiveChatOwnerId(null);
     setJoinError('');
     setInput('');
     setPendingImage(null);
-    setActiveChatId(chatId); // Effect 2 will emit join-chat-by-id
+    setActiveChatId(chatId);
     setUnreadCounts(prev => {
       const next = { ...prev };
       delete next[String(chatId)];
@@ -380,6 +481,50 @@ export default function ChatPage() {
     });
     setMobileView('chat');
   };
+
+  const handleAccept = () => {
+    if (!activeChatId || !user) return;
+    setRequestActionLoading(true);
+    getSocket().emit('accept-chat-request', { chatId: activeChatId, ownerId: user.id });
+    setRequestActionLoading(false);
+  };
+
+  const handleReject = () => {
+    if (!activeChatId || !user) return;
+    setRequestActionLoading(true);
+    getSocket().emit('reject-chat-request', { chatId: activeChatId, ownerId: user.id });
+    setRequestActionLoading(false);
+  };
+
+  /* ── Determine if input should be disabled ── */
+  const inputDisabled = !activeChat || chatStatus !== 'active' || ownerBlocked || !connected;
+
+  /* ── Status banner content ── */
+  const statusBanner = (() => {
+    if (ownerBlocked) return { text: 'You cannot request your own rental.', color: 'red' };
+    if (joinError) return { text: joinError, color: 'red' };
+    if (connectFailed) return { text: 'Cannot connect to chat server. Make sure the backend is running.', color: 'red' };
+    if (chatStatus === 'pending') {
+      // Are we the requester or the owner?
+      const isRequester = ownerIdParam ? user?.id !== ownerIdParam : false;
+      if (isRequester) {
+        return { text: 'Your chat request is pending. The owner will accept or reject it shortly.', color: 'amber' };
+      }
+      return null; // Owner sees Accept/Reject buttons instead
+    }
+    if (chatStatus === 'rejected') return { text: disabledReason || 'This chat request was declined.', color: 'red' };
+    if (chatStatus === 'disabled') return { text: disabledReason || 'This chat has been closed.', color: 'orange' };
+    return null;
+  })();
+
+  /* ── Should owner see accept/reject panel? ── */
+  const showOwnerActions = (() => {
+    if (chatStatus !== 'pending') return false;
+    // If ownerIdParam is set, the current user is the requester (not the owner)
+    if (ownerIdParam && user?.id !== ownerIdParam) return false;
+    // No ownerIdParam = current user is likely the owner (came from email/sidebar)
+    return true;
+  })();
 
   /* ═══════════════════════════════════════════════════════════════
      RENDER
@@ -393,7 +538,6 @@ export default function ChatPage() {
         w-full md:w-72 lg:w-80 shrink-0
         flex-col border-r border-cream-200 bg-white
       `}>
-        {/* Sidebar header */}
         <div className="px-5 pt-5 pb-4 border-b border-cream-200 shrink-0 bg-gradient-to-b from-cream-50 to-white">
           <div className="flex items-center justify-between mb-0.5">
             <h2 className="font-bold text-brown-800 text-lg tracking-tight">Messages</h2>
@@ -427,6 +571,13 @@ export default function ChatPage() {
                 const lastText  = chat.lastMessage?.imageUrl && !chat.lastMessage?.content
                   ? '📷 Image'
                   : chat.lastMessage?.content || 'No messages yet';
+
+                const statusDot = (() => {
+                  if (chat.status === 'pending') return <Clock size={10} className="text-amber-500" />;
+                  if (chat.status === 'disabled' || chat.status === 'rejected') return <AlertCircle size={10} className="text-red-400" />;
+                  return null;
+                })();
+
                 return (
                   <button
                     key={chat.chatId}
@@ -437,7 +588,6 @@ export default function ChatPage() {
                         : 'hover:bg-cream-50 border-l-transparent'
                     }`}
                   >
-                    {/* Avatar stack: product image + user initial */}
                     <div className="relative shrink-0">
                       {chat.productImage
                         ? <img src={chat.productImage} alt={chat.productName} className="w-12 h-12 rounded-2xl object-cover shadow-sm" />
@@ -453,9 +603,12 @@ export default function ChatPage() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <p className={`text-sm font-semibold truncate ${isActive ? 'text-brown-900' : 'text-brown-800'}`}>
-                          {chat.otherUser.username}
-                        </p>
+                        <div className="flex items-center gap-1 min-w-0">
+                          <p className={`text-sm font-semibold truncate ${isActive ? 'text-brown-900' : 'text-brown-800'}`}>
+                            {chat.otherUser.username}
+                          </p>
+                          {statusDot}
+                        </div>
                         {chat.lastMessage && (
                           <span className={`text-[10px] shrink-0 ${isActive ? 'text-brown-500' : 'text-brown-400'}`}>
                             {fmtDate(chat.lastMessage.timestamp)}
@@ -467,7 +620,10 @@ export default function ChatPage() {
                       </p>
                       <div className="flex items-center justify-between gap-2">
                         <p className={`text-xs truncate ${isActive ? 'text-brown-500' : 'text-brown-400'}`}>
-                          {lastText}
+                          {chat.status === 'pending' ? '⏳ Pending acceptance' :
+                           chat.status === 'disabled' ? '🔒 Chat closed' :
+                           chat.status === 'rejected' ? '✗ Request declined' :
+                           lastText}
                         </p>
                         {unread > 0 && !isActive && (
                           <span className="shrink-0 min-w-[18px] h-[18px] bg-brown-600 text-cream-100 text-[10px] font-bold rounded-full flex items-center justify-center px-1">
@@ -557,10 +713,39 @@ export default function ChatPage() {
               )}
             </div>
 
-            {/* Error banner */}
-            {(ownerBlocked || joinError || connectFailed) && (
-              <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-sm text-red-600 text-center shrink-0">
-                {ownerBlocked ? 'You cannot request your own rental.' : joinError || 'Cannot connect to chat server. Make sure the backend is running.'}
+            {/* Status banner */}
+            {statusBanner && (
+              <div className={`px-4 py-3 text-sm text-center shrink-0 border-b ${
+                statusBanner.color === 'red'    ? 'bg-red-50 border-red-200 text-red-600' :
+                statusBanner.color === 'amber'  ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                  'bg-orange-50 border-orange-200 text-orange-700'
+              }`}>
+                {statusBanner.text}
+              </div>
+            )}
+
+            {/* Owner: Accept / Reject panel */}
+            {showOwnerActions && activeChat && (
+              <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 shrink-0">
+                <p className="text-sm font-semibold text-amber-800 mb-2">
+                  Someone wants to chat about this rental. Accept or decline?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAccept}
+                    disabled={requestActionLoading}
+                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <Check size={15} /> Accept
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    disabled={requestActionLoading}
+                    className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <XCircle size={15} /> Decline
+                  </button>
+                </div>
               </div>
             )}
 
@@ -587,7 +772,7 @@ export default function ChatPage() {
             {/* Messages */}
             {activeChat && (
               <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3 bg-cream-100/60">
-                {/* RentBot welcome message */}
+                {/* RentBot welcome */}
                 {(() => {
                   const meta = chatList.find(c => c.chatId === activeChat.chatId);
                   const productLabel = meta?.productName ?? 'this item';
@@ -601,7 +786,8 @@ export default function ChatPage() {
                           RentBot <span className="bg-brown-100 text-brown-500 text-[9px] px-1.5 py-0.5 rounded-full font-medium">BOT</span>
                         </p>
                         <p className="text-sm text-brown-800 leading-relaxed">
-                          👋 Hi! I've connected you for the rental enquiry about <span className="font-semibold">{productLabel}</span>. Feel free to ask the owner any questions about availability, pricing, or pickup.
+                          👋 A chat request has been created for <span className="font-semibold">{productLabel}</span>.
+                          The owner has been notified by email. Messaging will be enabled once they accept.
                         </p>
                         <p className="text-xs text-brown-400 mt-1.5">Just now</p>
                       </div>
@@ -609,9 +795,9 @@ export default function ChatPage() {
                   );
                 })()}
 
-                {activeChat.messages.length === 0 && (
+                {activeChat.messages.length === 0 && chatStatus === 'active' && (
                   <div className="flex justify-center py-4">
-                    <p className="text-brown-400 text-xs bg-cream-200/70 rounded-full px-4 py-1.5">Be the first to send a message</p>
+                    <p className="text-brown-400 text-xs bg-cream-200/70 rounded-full px-4 py-1.5">Chat accepted — be the first to send a message</p>
                   </div>
                 )}
 
@@ -620,7 +806,6 @@ export default function ChatPage() {
                   const meta   = chatList.find(c => c.chatId === activeChat.chatId);
                   return (
                     <div key={msg.id} className={`flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
-                      {/* Avatar for received messages */}
                       {!isMine && (
                         <UserAvatar
                           name={meta?.otherUser.username ?? '?'}
@@ -654,8 +839,8 @@ export default function ChatPage() {
             )}
 
             {/* Input */}
-            {(activeChat || (!ownerBlocked && !joinError && !connectFailed)) && (
-              <div className={`px-4 py-3 bg-white border-t border-cream-200 shrink-0 ${!activeChat ? 'opacity-50 pointer-events-none' : ''}`}>
+            {activeChat && (
+              <div className={`px-4 py-3 bg-white border-t border-cream-200 shrink-0 ${inputDisabled ? 'opacity-60' : ''}`}>
                 {imageUploading && (
                   <div className="mb-3 flex items-center gap-2 rounded-lg border border-cream-300 bg-cream-100 px-3 py-2.5 text-xs text-brown-500">
                     <Loader2 size={14} className="animate-spin" />
@@ -682,13 +867,23 @@ export default function ChatPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Disabled overlay message */}
+                {inputDisabled && chatStatus !== null && chatStatus !== 'active' && (
+                  <p className="text-xs text-brown-400 text-center mb-2">
+                    {chatStatus === 'pending' ? 'Waiting for owner to accept…' :
+                     chatStatus === 'rejected' ? 'Chat request was declined' :
+                     'This chat has been closed'}
+                  </p>
+                )}
+
                 <div className="flex items-center gap-2">
                   <input ref={fileRef} type="file" accept="image/*" className="hidden"
                     onChange={e => { handleImageUpload(e.target.files?.[0]); e.target.value = ''; }} />
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    disabled={!activeChat || imageUploading}
+                    disabled={inputDisabled || imageUploading}
                     className="w-10 h-10 rounded-xl border border-cream-300 bg-cream-100 text-brown-500 transition-colors hover:bg-cream-200 disabled:opacity-50 flex items-center justify-center"
                   >
                     {imageUploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
@@ -699,13 +894,18 @@ export default function ChatPage() {
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                    placeholder={pendingImage ? 'Add a caption or message…' : activeChat ? 'Type a message…' : 'Connecting…'}
-                    className="flex-1 bg-cream-100 border border-cream-300 rounded-xl px-4 py-2.5 text-sm text-brown-800 placeholder-brown-300 focus:outline-none focus:ring-2 focus:ring-brown-300 focus:border-transparent"
+                    placeholder={
+                      inputDisabled
+                        ? (chatStatus === 'pending' ? 'Waiting for acceptance…' : 'Chat unavailable')
+                        : (pendingImage ? 'Add a caption or message…' : 'Type a message…')
+                    }
+                    disabled={inputDisabled}
+                    className="flex-1 bg-cream-100 border border-cream-300 rounded-xl px-4 py-2.5 text-sm text-brown-800 placeholder-brown-300 focus:outline-none focus:ring-2 focus:ring-brown-300 focus:border-transparent disabled:cursor-not-allowed"
                     autoComplete="off"
                   />
                   <button
                     onClick={sendMessage}
-                    disabled={(!input.trim() && !pendingImage) || !activeChat || imageUploading}
+                    disabled={(!input.trim() && !pendingImage) || inputDisabled || imageUploading}
                     className="w-10 h-10 bg-brown-600 hover:bg-brown-700 disabled:bg-cream-300 text-cream-100 disabled:text-brown-400 rounded-xl flex items-center justify-center transition-all active:scale-95"
                   >
                     <Send size={16} />

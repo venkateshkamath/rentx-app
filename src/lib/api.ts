@@ -71,5 +71,20 @@ export const api = {
 
     update: (id: string, body: Record<string, unknown>) =>
       request(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+    getChatParticipants: (id: string) =>
+      request<{ success: boolean; data: unknown[] }>(`/products/${id}/chat-participants`),
+
+    updateStatus: (id: string, body: {
+      status: string;
+      rentedUserId?: string;
+      isExternalRenter?: boolean;
+      startDate?: string;
+      endDate?: string;
+    }) =>
+      request('/products/update-status', {
+        method: 'POST',
+        body: JSON.stringify({ product_id: id, ...body }),
+      }),
   },
 };
