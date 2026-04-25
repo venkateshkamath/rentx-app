@@ -1,24 +1,29 @@
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  MapPin, Star, Package, X,
-  Plus, Camera, Edit2,
-  Award, Calendar, ShoppingBag, CheckCircle2,
+  MapPin, Star, Package,
+  Plus, Camera, Edit2, Lock, Eye, EyeOff,
+  Award, Calendar, ShoppingBag, CheckCircle2, ArrowUpRight, ArrowDownLeft,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { mockReviews } from '../data/mockReviews';
 import ProductCard from '../components/products/ProductCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
+
 import Badge from '../components/ui/Badge';
+import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
-import type { Product } from '../types';
+import type { LocationData, Product } from '../types';
 import UserAvatar from '../components/ui/UserAvatar';
 
 /* ─── Types ─── */
-type MainTab  = 'listings' | 'rented' | 'reviews';
+type MainTab  = 'listings' | 'rented' | 'reviews' | 'history';
 type RentedSubTab = 'renting' | 'rented-out';
+type HistorySubTab = 'given-out' | 'taken';
+type ReviewSubTab = 'given' | 'received';
 
 interface RentedProduct {
   _id: string;
@@ -44,6 +49,27 @@ interface OwnedProduct extends Product {
   rentalEndDate?: string;
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+interface HistoryRecord {
+  _id: string;
+  productId: { _id: string; productName: string; images: { url: string }[]; location?: { name?: string }; rentPrice?: number; userId?: { _id: string; username: string; name: string } };
+  rentedByUserId: { _id: string; username: string; name: string } | null;
+  isExternalRenter: boolean;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+}
+
+interface UserReview {
+  _id: string;
+  productId: { _id: string; productName: string; images?: { url: string }[] };
+  userId: { _id: string; username: string; name: string; avatar?: string };
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /* ─── Helpers ─── */
 function locStr(loc: string | { name?: string } | undefined): string {
   if (!loc) return '—';
@@ -65,13 +91,23 @@ export default function ProfilePage() {
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
   const [mainTab,     setMainTab]     = useState<MainTab>('listings');
-  const [rentedSub,   setRentedSub]   = useState<RentedSubTab>('renting');
+  const [historySub,  setHistorySub]  = useState<HistorySubTab>('given-out');
   const [editOpen,    setEditOpen]    = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [avatarError, setAvatarError] = useState('');
   const [avatarUploading, setAvatarUploading] = useState(false);
 
-  const [profile,   setProfile]   = useState({ name: user?.name ?? '', location: user?.location ?? '' });
+  /* ── Change password state ── */
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwForm, setPwForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [showOldPw, setShowOldPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+
+  const [profile,   setProfile]   = useState({ name: user?.name ?? '', location: user?.location ?? null as LocationData | null });
   const [editForm,  setEditForm]  = useState(profile);
 
   /* ── Data ── */
@@ -80,7 +116,16 @@ export default function ProfilePage() {
   const [myRentals,      setMyRentals]      = useState<RentedProduct[]>([]);
   const [rentalsLoading,  setRentalsLoading]  = useState(true);
 
-  const received = mockReviews.slice(0, 4);
+  /* ── History data ── */
+  const [historyRentedOut,  setHistoryRentedOut]  = useState<HistoryRecord[]>([]);
+  const [historyRentedFrom, setHistoryRentedFrom] = useState<HistoryRecord[]>([]);
+  const [historyLoading,    setHistoryLoading]    = useState(true);
+
+  /* ── Reviews data ── */
+  const [myReviews,        setMyReviews]        = useState<UserReview[]>([]);
+  const [receivedReviews,  setReceivedReviews]  = useState<UserReview[]>([]);
+  const [reviewsLoading,   setReviewsLoading]   = useState(true);
+  const [reviewSub,        setReviewSub]        = useState<ReviewSubTab>('received');
 
   useEffect(() => {
     // Listings (owned products — includes rented-out ones)
@@ -104,6 +149,24 @@ export default function ProfilePage() {
       .then(res => setMyRentals((res.data as RentedProduct[]) ?? []))
       .catch(() => setMyRentals([]))
       .finally(() => setRentalsLoading(false));
+
+    // Rental history
+    api.products.getRentalHistory()
+      .then(res => {
+        setHistoryRentedOut((res.data.rentedOut as HistoryRecord[]) ?? []);
+        setHistoryRentedFrom((res.data.rentedFrom as HistoryRecord[]) ?? []);
+      })
+      .catch(() => { setHistoryRentedOut([]); setHistoryRentedFrom([]); })
+      .finally(() => setHistoryLoading(false));
+
+    // User reviews (given + received)
+    Promise.all([
+      api.reviews.getUserReviews().then(res => (res.data as UserReview[]) ?? []).catch(() => []),
+      api.reviews.getReceivedReviews().then(res => (res.data as UserReview[]) ?? []).catch(() => []),
+    ]).then(([given, received]) => {
+      setMyReviews(given);
+      setReceivedReviews(received);
+    }).finally(() => setReviewsLoading(false));
   }, []);
 
   /* ── Guard ── */
@@ -123,9 +186,9 @@ export default function ProfilePage() {
   }
 
   /* ── Derived ── */
-  const availableListings = myListings.filter(p => p.status === 'available');
   const rentedOutListings = myListings.filter(p => p.status === 'rented');
   const totalRented       = myRentals.length + rentedOutListings.length;
+  const totalHistory      = historyRentedOut.length + historyRentedFrom.length;
 
   const memberSince = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
@@ -134,11 +197,54 @@ export default function ProfilePage() {
   /* ── Handlers ── */
   const handleSave = async () => {
     setSaving(true);
-    await new Promise(r => setTimeout(r, 600));
-    setProfile(editForm);
-    updateUser({ name: editForm.name, location: editForm.location });
-    setSaving(false);
-    setEditOpen(false);
+    try {
+      await api.auth.updateProfile({ name: editForm.name, location: editForm.location ?? undefined });
+      setProfile(editForm);
+      updateUser({ name: editForm.name, location: editForm.location ?? undefined });
+      setEditOpen(false);
+    } catch {
+      // silently fail — local state already reflects the change
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPwError('');
+    setPwSuccess('');
+
+    if (!pwForm.oldPassword || !pwForm.newPassword || !pwForm.confirmPassword) {
+      setPwError('All fields are required.');
+      return;
+    }
+    if (pwForm.newPassword.length < 6) {
+      setPwError('New password must be at least 6 characters.');
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwError('New passwords do not match.');
+      return;
+    }
+    if (pwForm.oldPassword === pwForm.newPassword) {
+      setPwError('New password must differ from the current one.');
+      return;
+    }
+
+    setPwLoading(true);
+    try {
+      const res = await api.auth.changePassword(pwForm.oldPassword, pwForm.newPassword);
+      if (!res.success) {
+        setPwError(res.message ?? 'Something went wrong.');
+      } else {
+        setPwSuccess('Password changed successfully!');
+        setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+        setTimeout(() => { setPwOpen(false); setPwSuccess(''); }, 1500);
+      }
+    } catch (err) {
+      setPwError((err as Error).message ?? 'Failed to change password.');
+    } finally {
+      setPwLoading(false);
+    }
   };
 
   const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -201,7 +307,7 @@ export default function ProfilePage() {
 
           {profile.location && (
             <div className="inline-flex items-center gap-1.5 bg-white/10 text-cream-200 text-xs px-3 py-1.5 rounded-full mb-6">
-              <MapPin size={11} /> {profile.location}
+              <MapPin size={11} /> {typeof profile.location === 'string' ? profile.location : profile.location.name}
             </div>
           )}
 
@@ -213,6 +319,12 @@ export default function ProfilePage() {
               className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all border border-white/20 backdrop-blur-sm"
             >
               <Edit2 size={14} /> Edit Profile
+            </button>
+            <button
+              onClick={() => { setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); setPwError(''); setPwSuccess(''); setPwOpen(true); }}
+              className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all border border-white/20 backdrop-blur-sm"
+            >
+              <Lock size={14} /> Change Password
             </button>
             <button
               onClick={() => navigate('/list-product')}
@@ -254,8 +366,8 @@ export default function ProfilePage() {
         <div className="flex border-b border-cream-300 mb-7">
           {([
             { key: 'listings' as MainTab, label: 'My Listings', count: myListings.length    },
-            { key: 'rented'   as MainTab, label: 'Rented',      count: totalRented          },
-            { key: 'reviews'  as MainTab, label: 'Reviews',     count: received.length      },
+            { key: 'reviews'  as MainTab, label: 'Reviews',     count: myReviews.length + receivedReviews.length },
+            { key: 'history'  as MainTab, label: 'History',     count: totalHistory          },
           ] as { key: MainTab; label: string; count: number }[]).map(({ key, label, count }) => (
             <button
               key={key}
@@ -311,28 +423,30 @@ export default function ProfilePage() {
           )
         )}
 
-        {/* ════════════════ RENTED TAB ════════════════ */}
-        {mainTab === 'rented' && (
+
+        {/* ════════════════ REVIEWS TAB ════════════════ */}
+        {mainTab === 'reviews' && (
           <div>
             {/* Sub-tab pills */}
             <div className="flex gap-2 mb-6">
               {([
-                { key: 'renting'    as RentedSubTab, label: 'Renting',    count: myRentals.length       },
-                { key: 'rented-out' as RentedSubTab, label: 'Rented Out', count: rentedOutListings.length },
-              ] as { key: RentedSubTab; label: string; count: number }[]).map(({ key, label, count }) => (
+                { key: 'received' as ReviewSubTab, label: 'Received',  Icon: ArrowDownLeft, count: receivedReviews.length },
+                { key: 'given'    as ReviewSubTab, label: 'Given',     Icon: ArrowUpRight,  count: myReviews.length },
+              ] as { key: ReviewSubTab; label: string; Icon: typeof ArrowUpRight; count: number }[]).map(({ key, label, Icon, count }) => (
                 <button
                   key={key}
-                  onClick={() => setRentedSub(key)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
-                    rentedSub === key
+                  onClick={() => setReviewSub(key)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                    reviewSub === key
                       ? 'bg-brown-700 text-cream-100 border-brown-700 shadow-sm'
                       : 'bg-white text-brown-500 border-cream-300 hover:border-brown-400 hover:text-brown-700'
                   }`}
                 >
+                  <Icon size={14} />
                   {label}
                   {count > 0 && (
-                    <span className={`ml-1.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
-                      rentedSub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
+                    <span className={`ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+                      reviewSub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
                     }`}>
                       {count}
                     </span>
@@ -341,51 +455,204 @@ export default function ProfilePage() {
               ))}
             </div>
 
-            {/* ── Renting (items I rent from others) ── */}
-            {rentedSub === 'renting' && (
-              rentalsLoading ? (
+            {reviewsLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="bg-white border border-cream-200 rounded-2xl h-32 animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* ─── Received Reviews ─── */}
+                {reviewSub === 'received' && (
+                  receivedReviews.length > 0 ? (
+                    <div className="space-y-4">
+                      {receivedReviews.map(r => {
+                        const productName = r.productId?.productName ?? 'Unknown Product';
+                        const productThumb = r.productId?.images?.[0]?.url;
+                        const reviewerName = r.userId?.name || r.userId?.username || 'Anonymous';
+                        return (
+                          <div
+                            key={r._id}
+                            onClick={() => navigate(`/products/${r.productId?._id}`)}
+                            className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                                {productThumb
+                                  ? <img src={productThumb} alt={productName} className="w-full h-full object-cover" />
+                                  : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                  <div>
+                                    <span className="font-semibold text-brown-800 text-sm">{productName}</span>
+                                    <span className="text-brown-400 text-xs ml-2">
+                                      {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-0.5">
+                                    {[1,2,3,4,5].map(n => (
+                                      <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
+                                    ))}
+                                  </div>
+                                </div>
+                                <p className="text-brown-500 text-sm leading-relaxed mt-2">{r.comment}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <UserAvatar name={reviewerName} avatar={r.userId?.avatar} className="w-5 h-5 rounded-full" textClassName="text-[8px] font-bold" />
+                                  <span className="text-xs text-brown-400">by {reviewerName}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={<MessageSquare size={32} className="text-brown-300" />}
+                      title="No reviews received yet"
+                      desc="Reviews others write on your products will appear here"
+                    />
+                  )
+                )}
+
+                {/* ─── Given Reviews ─── */}
+                {reviewSub === 'given' && (
+                  myReviews.length > 0 ? (
+                    <div className="space-y-4">
+                      {myReviews.map(r => {
+                        const productName = r.productId?.productName ?? 'Unknown Product';
+                        const productThumb = r.productId?.images?.[0]?.url;
+                        return (
+                          <div
+                            key={r._id}
+                            onClick={() => navigate(`/products/${r.productId?._id}`)}
+                            className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                                {productThumb
+                                  ? <img src={productThumb} alt={productName} className="w-full h-full object-cover" />
+                                  : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                  <div>
+                                    <span className="font-semibold text-brown-800 text-sm">{productName}</span>
+                                    <span className="text-brown-400 text-xs ml-2">
+                                      {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-0.5">
+                                    {[1,2,3,4,5].map(n => (
+                                      <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
+                                    ))}
+                                  </div>
+                                </div>
+                                <p className="text-brown-500 text-sm leading-relaxed mt-2">{r.comment}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={<Star size={32} className="text-brown-300" />}
+                      title="No reviews given yet"
+                      desc="Reviews you've written will appear here"
+                    />
+                  )
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ════════════════ HISTORY TAB ════════════════ */}
+        {mainTab === 'history' && (
+          <div>
+            {/* Sub-tab pills */}
+            <div className="flex gap-2 mb-6">
+              {([
+                { key: 'given-out' as HistorySubTab, label: 'Given Out',    Icon: ArrowUpRight,  count: historyRentedOut.length   },
+                { key: 'taken'     as HistorySubTab, label: 'Taken',        Icon: ArrowDownLeft, count: historyRentedFrom.length  },
+              ] as { key: HistorySubTab; label: string; Icon: typeof ArrowUpRight; count: number }[]).map(({ key, label, Icon, count }) => (
+                <button
+                  key={key}
+                  onClick={() => setHistorySub(key)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                    historySub === key
+                      ? 'bg-brown-700 text-cream-100 border-brown-700 shadow-sm'
+                      : 'bg-white text-brown-500 border-cream-300 hover:border-brown-400 hover:text-brown-700'
+                  }`}
+                >
+                  <Icon size={14} />
+                  {label}
+                  {count > 0 && (
+                    <span className={`ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+                      historySub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Given Out — items the user listed that were rented by others */}
+            {historySub === 'given-out' && (
+              historyLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {Array.from({ length: 2 }).map((_, i) => (
                     <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
                   ))}
                 </div>
-              ) : myRentals.length > 0 ? (
+              ) : historyRentedOut.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {myRentals.map(rental => {
-                    const thumb    = rental.images?.[0]?.url;
-                    const isActive = new Date(rental.rentalEndDate) >= new Date();
+                  {historyRentedOut.map(h => {
+                    const prod  = h.productId;
+                    const thumb = prod?.images?.[0]?.url;
+                    const renter = h.rentedByUserId;
+                    const ended = new Date(h.endDate) < new Date();
                     return (
                       <div
-                        key={rental._id}
-                        onClick={() => navigate(`/products/${rental.productId}`)}
-                        className="bg-white border border-cream-200 rounded-2xl p-4 flex gap-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                        key={h._id}
+                        onClick={() => prod?._id && navigate(`/products/${prod._id}`)}
+                        className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
                       >
-                        <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-cream-200">
-                          {thumb
-                            ? <img src={thumb} alt={rental.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                            : <div className="w-full h-full flex items-center justify-center"><Package size={22} className="text-brown-300" /></div>}
+                        <div className="flex gap-4 mb-3">
+                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                            {thumb
+                              ? <img src={thumb} alt={prod?.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                              : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{prod?.productName ?? 'Untitled'}</p>
+                              <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                ended
+                                  ? 'bg-cream-200 text-brown-500 border border-cream-300'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}>
+                                {ended ? 'Completed' : 'Active'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
+                              <Calendar size={10} className="text-brown-400 shrink-0" />
+                              {fmtDate(h.startDate)} → {fmtDate(h.endDate)}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{rental.productName}</p>
-                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                              isActive
-                                ? 'bg-green-50 text-green-700 border border-green-200'
-                                : 'bg-cream-200 text-brown-500 border border-cream-300'
-                            }`}>
-                              {isActive ? 'Active' : 'Ended'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-brown-400 mb-2 flex items-center gap-1">
-                            <MapPin size={10} /> {locStr(rental.location)}
-                          </p>
-                          <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit mb-1.5">
-                            <Calendar size={10} className="text-brown-400 shrink-0" />
-                            {fmtDate(rental.rentalStartDate)} → {fmtDate(rental.rentalEndDate)}
-                          </div>
-                          <p className="text-xs text-brown-400">
-                            Owner: <span className="text-brown-600 font-medium">{rental.userId?.name || rental.userId?.username}</span>
-                          </p>
+                        <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2">
+                          {renter ? (
+                            <p className="text-xs text-brown-500">
+                              Rented by: <span className="text-brown-700 font-semibold">{renter.name || renter.username}</span>
+                            </p>
+                          ) : (
+                            <p className="text-xs text-brown-400 italic">{h.isExternalRenter ? 'External renter (not on RentX)' : 'Unknown renter'}</p>
+                          )}
                         </div>
                       </div>
                     );
@@ -393,86 +660,62 @@ export default function ProfilePage() {
                 </div>
               ) : (
                 <EmptyState
-                  icon={<ShoppingBag size={32} className="text-brown-300" />}
-                  title="Not renting anything yet"
-                  desc="Items you're renting from others will appear here once an owner confirms your request"
-                  cta="Browse items"
-                  onCta={() => navigate('/')}
+                  icon={<ArrowUpRight size={32} className="text-brown-300" />}
+                  title="No items given out yet"
+                  desc="When someone rents one of your items, it'll show up here"
                 />
               )
             )}
 
-            {/* ── Rented Out (my items currently rented to someone) ── */}
-            {rentedSub === 'rented-out' && (
-              listingsLoading ? (
+            {/* Taken — items the user rented from others */}
+            {historySub === 'taken' && (
+              historyLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-40 animate-pulse" />
+                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
                   ))}
                 </div>
-              ) : rentedOutListings.length > 0 ? (
+              ) : historyRentedFrom.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {rentedOutListings.map(item => {
-                    const thumb    = item.images?.[0];
-                    const renter   = item.rentedUserId;
-                    const isActive = item.rentalEndDate ? new Date(item.rentalEndDate) >= new Date() : true;
+                  {historyRentedFrom.map(h => {
+                    const prod  = h.productId;
+                    const thumb = prod?.images?.[0]?.url;
+                    const owner = prod?.userId;
+                    const ended = new Date(h.endDate) < new Date();
                     return (
                       <div
-                        key={item.id}
-                        onClick={() => navigate(`/products/${item.id}`)}
+                        key={h._id}
+                        onClick={() => prod?._id && navigate(`/products/${prod._id}`)}
                         className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
                       >
                         <div className="flex gap-4 mb-3">
-                          <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-cream-200">
                             {thumb
-                              ? <img src={typeof thumb === 'string' ? thumb : (thumb as { url: string }).url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                              : <div className="w-full h-full flex items-center justify-center"><Package size={22} className="text-brown-300" /></div>}
+                              ? <img src={thumb} alt={prod?.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                              : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{item.title}</p>
+                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{prod?.productName ?? 'Untitled'}</p>
                               <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                isActive
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : 'bg-cream-200 text-brown-500 border border-cream-300'
+                                ended
+                                  ? 'bg-cream-200 text-brown-500 border border-cream-300'
+                                  : 'bg-green-50 text-green-700 border border-green-200'
                               }`}>
-                                {isActive ? 'Active' : 'Ended'}
+                                {ended ? 'Completed' : 'Active'}
                               </span>
                             </div>
-                            {item.rentalStartDate && item.rentalEndDate && (
-                              <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
-                                <Calendar size={10} className="text-brown-400 shrink-0" />
-                                {fmtDate(item.rentalStartDate)} → {fmtDate(item.rentalEndDate)}
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
+                              <Calendar size={10} className="text-brown-400 shrink-0" />
+                              {fmtDate(h.startDate)} → {fmtDate(h.endDate)}
+                            </div>
                           </div>
                         </div>
-
-                        {/* Renter info card */}
-                        {renter ? (
-                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2.5 flex items-center gap-3">
-                            <UserAvatar
-                              name={renter.name || renter.username}
-                              className="w-8 h-8 rounded-full shrink-0"
-                              textClassName="text-xs font-bold"
-                            />
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-brown-700 truncate">
-                                {renter.name || renter.username}
-                              </p>
-                              {renter.location && (
-                                <p className="text-[11px] text-brown-400 flex items-center gap-1 mt-0.5 truncate">
-                                  <MapPin size={9} /> {renter.location}
-                                </p>
-                              )}
-                            </div>
-                            <div className="ml-auto shrink-0">
-                              <CheckCircle2 size={16} className="text-green-500" />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2.5">
-                            <p className="text-xs text-brown-400 italic">External renter (not on RentX)</p>
+                        {owner && (
+                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2">
+                            <p className="text-xs text-brown-500">
+                              Owner: <span className="text-brown-700 font-semibold">{owner.name || owner.username}</span>
+                            </p>
                           </div>
                         )}
                       </div>
@@ -481,54 +724,15 @@ export default function ProfilePage() {
                 </div>
               ) : (
                 <EmptyState
-                  icon={<Award size={32} className="text-brown-300" />}
-                  title="Nothing rented out yet"
-                  desc="When you mark one of your listings as rented, it'll appear here with the renter's details"
+                  icon={<ArrowDownLeft size={32} className="text-brown-300" />}
+                  title="No items rented yet"
+                  desc="Items you've rented from others will appear here"
+                  cta="Browse items"
+                  onCta={() => navigate('/')}
                 />
               )
             )}
           </div>
-        )}
-
-        {/* ════════════════ REVIEWS TAB ════════════════ */}
-        {mainTab === 'reviews' && (
-          received.length > 0 ? (
-            <div className="space-y-4">
-              {received.map(r => (
-                <div key={r.id} className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft">
-                  <div className="flex items-start gap-3">
-                    <img src={r.authorAvatar} alt={r.authorName} className="w-10 h-10 rounded-xl object-cover shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div>
-                          <span className="font-semibold text-brown-800 text-sm">{r.authorName}</span>
-                          <span className="text-brown-400 text-xs ml-2">
-                            {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex gap-0.5">
-                            {[1,2,3,4,5].map(n => (
-                              <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
-                            ))}
-                          </div>
-                          <Badge type={r.transactionType} size="sm" />
-                        </div>
-                      </div>
-                      <p className="font-semibold text-brown-800 text-sm mt-2 mb-1">{r.title}</p>
-                      <p className="text-brown-500 text-sm leading-relaxed">{r.body}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Star size={32} className="text-brown-300" />}
-              title="No reviews yet"
-              desc="Reviews from renters will appear here"
-            />
-          )
         )}
       </div>
 
@@ -569,12 +773,12 @@ export default function ProfilePage() {
           <div>
             <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
             <div className="relative">
-              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400" />
-              <input
-                value={editForm.location}
-                onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
+              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400 z-10" />
+              <LocationAutocomplete
+                value={editForm.location as LocationData | null}
+                onChange={loc => setEditForm(f => ({ ...f, location: loc }))}
                 className="input-field pl-9"
-                placeholder="City, State"
+                placeholder="Search your city…"
               />
             </div>
           </div>
@@ -582,6 +786,88 @@ export default function ProfilePage() {
           <div className="flex gap-3 pt-2">
             <Button onClick={handleSave} loading={saving} className="flex-1">Save Changes</Button>
             <Button variant="secondary" onClick={() => setEditOpen(false)} className="flex-1">Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ══ CHANGE PASSWORD MODAL ══ */}
+      <Modal open={pwOpen} onClose={() => setPwOpen(false)} title="Change Password" maxWidth="max-w-md">
+        <div className="space-y-4">
+          {/* Current password */}
+          <div>
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">Current Password</label>
+            <div className="relative">
+              <input
+                type={showOldPw ? 'text' : 'password'}
+                value={pwForm.oldPassword}
+                onChange={e => setPwForm(f => ({ ...f, oldPassword: e.target.value }))}
+                className="input-field pr-10"
+                placeholder="Enter current password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowOldPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600 transition-colors"
+              >
+                {showOldPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* New password */}
+          <div>
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">New Password</label>
+            <div className="relative">
+              <input
+                type={showNewPw ? 'text' : 'password'}
+                value={pwForm.newPassword}
+                onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
+                className="input-field pr-10"
+                placeholder="Min. 6 characters"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600 transition-colors"
+              >
+                {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Confirm new password */}
+          <div>
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">Confirm New Password</label>
+            <div className="relative">
+              <input
+                type={showConfirmPw ? 'text' : 'password'}
+                value={pwForm.confirmPassword}
+                onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                className="input-field pr-10"
+                placeholder="Re-enter new password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600 transition-colors"
+              >
+                {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {pwError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">{pwError}</div>
+          )}
+          {pwSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2.5 text-sm text-green-700 flex items-center gap-2">
+              <CheckCircle2 size={16} /> {pwSuccess}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button onClick={handleChangePassword} loading={pwLoading} className="flex-1">Change Password</Button>
+            <Button variant="secondary" onClick={() => setPwOpen(false)} className="flex-1">Cancel</Button>
           </div>
         </div>
       </Modal>

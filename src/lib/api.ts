@@ -54,8 +54,26 @@ export const api = {
     confirmOtp: (email: string, otp: string) =>
       request('/auth/confirm-otp', { method: 'POST', body: JSON.stringify({ email, otp }) }),
 
+    verifyOtp: (email: string, otp: string) =>
+      request('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, otp }) }),
+
+    resetPassword: (email: string, otp: string, newPassword: string) =>
+      request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, otp, newPassword }) }),
+
     updateAvatar: (formData: FormData) =>
       request<{ success: boolean; avatar: string }>('/auth/avatar', { method: 'PATCH', body: formData }),
+
+    changePassword: (oldPassword: string, newPassword: string) =>
+      request<{ success: boolean; message: string }>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ oldPassword, newPassword }),
+      }),
+
+    updateProfile: (body: { name?: string; location?: unknown }) =>
+      request<{ success: boolean; data: unknown }>('/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
   },
 
   chat: {
@@ -91,5 +109,31 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ product_id: id, ...body }),
       }),
+
+    getRentalHistory: () =>
+      request<{ success: boolean; data: { rentedOut: unknown[]; rentedFrom: unknown[] } }>('/products/rental-history'),
+  },
+
+  reviews: {
+    getUserReviews: () =>
+      request<{ success: boolean; count: number; data: unknown[] }>('/reviews/user'),
+
+    getReceivedReviews: () =>
+      request<{ success: boolean; count: number; data: unknown[] }>('/reviews/received'),
+
+    getProductReviews: (productId: string) =>
+      request<{ success: boolean; count: number; averageRating: number; data: unknown[] }>(`/reviews/${productId}`),
+
+    addReview: (productId: string, body: { rating: number; comment: string }) =>
+      request<{ success: boolean; data: unknown }>(`/reviews/${productId}`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+
+    deleteReview: (reviewId: string) =>
+      request<{ success: boolean }>(`/reviews/${reviewId}`, { method: 'DELETE' }),
+
+    checkCanReview: (productId: string) =>
+      request<{ success: boolean; canReview: boolean }>(`/reviews/${productId}/can-review`),
   },
 };

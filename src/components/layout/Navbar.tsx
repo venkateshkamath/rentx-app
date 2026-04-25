@@ -7,6 +7,13 @@ import RentXLogo from '../ui/RentXLogo';
 import UserAvatar from '../ui/UserAvatar';
 import { getSocket } from '../../lib/socket';
 
+interface Toast {
+  id: string;
+  title: string;
+  message: string;
+  chatId: string;
+}
+
 export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -14,13 +21,16 @@ export default function Navbar() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [hasUnreadChat, setHasUnreadChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [latestChatId, setLatestChatId] = useState('');
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const removeToast = (id: string) => setToasts(t => t.filter(x => x.id !== id));
 
   useEffect(() => {
     if (!isAuthenticated || !user) {
       queueMicrotask(() => {
-        setHasUnreadChat(false);
+        setUnreadCount(0);
         setLatestChatId('');
       });
       return;
@@ -31,12 +41,27 @@ export default function Navbar() {
     const register = () => socket.emit('register-user', { userId: user.id });
     register();
 
-    const handleNotification = (data: { chatId?: string; message?: { sender?: { _id?: string } } }) => {
+    const handleNotification = (data: { chatId: string; message: { sender?: { _id?: string; username?: string }; content?: string; isRequest?: boolean } }) => {
       const senderId = data.message?.sender?._id;
-      if (String(senderId ?? '') !== String(user.id ?? '')) {
-        setLatestChatId(data.chatId != null ? String(data.chatId) : '');
-        setHasUnreadChat(true);
+      // Ignore if it's our own message (unless it's a system request msg which might lack _id)
+      if (senderId && String(senderId) === String(user.id)) return;
+
+      // Update count & link
+      setLatestChatId(String(data.chatId));
+      if (!location.pathname.includes('/chat')) {
+        setUnreadCount(prev => prev + 1);
       }
+
+      // Show toast
+      const newToast: Toast = {
+        id: Math.random().toString(36).slice(2),
+        title: data.message.isRequest ? 'New Request' : (data.message.sender?.username ?? 'New Message'),
+        message: data.message.content ?? 'Sent an image or attachment',
+        chatId: data.chatId,
+      };
+
+      setToasts(prev => [...prev, newToast]);
+      setTimeout(() => removeToast(newToast.id), 5000);
     };
 
     socket.on('connect', register);
@@ -49,14 +74,14 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout();
-    setHasUnreadChat(false);
+    setUnreadCount(0);
     setLatestChatId('');
     setProfileOpen(false);
     navigate('/');
   };
 
   const openChat = () => {
-    setHasUnreadChat(false);
+    setUnreadCount(0);
     navigate(latestChatId ? `/chat?chat=${latestChatId}` : '/chat');
   };
 
@@ -126,8 +151,10 @@ export default function Navbar() {
                   className="relative rounded-lg p-2 text-brown-400 transition-colors hover:bg-cream-200 hover:text-brown-700"
                 >
                   <MessageCircle size={20} />
-                  {hasUnreadChat && (
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full ring-1 ring-white" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1.5 min-w-[18px] h-[18px] text-[10px] font-bold text-white bg-red-500 rounded-full ring-2 ring-white transform translate-x-1/4 -translate-y-1/4 shadow-sm">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
                   )}
                 </button>
 
@@ -168,7 +195,7 @@ export default function Navbar() {
                           key={path}
                           onClick={() => {
                             if (path === '/chat') {
-                              setHasUnreadChat(false);
+                              setUnreadCount(0);
                               navigate(latestChatId ? `/chat?chat=${latestChatId}` : path);
                             } else {
                               navigate(path);
@@ -290,6 +317,35 @@ export default function Navbar() {
       {profileOpen && (
         <div className="fixed inset-0 z-[-1]" onClick={() => setProfileOpen(false)} />
       )}
+
+      {/* ── Toasts Container ── */}
+      <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 w-80 pointer-events-none">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className="pointer-events-auto bg-white border border-cream-200 shadow-card-hover rounded-xl p-3 px-4 flex items-start gap-3 animate-slide-in cursor-pointer hover:bg-cream-50 transition-colors"
+            onClick={() => {
+              removeToast(toast.id);
+              setUnreadCount(0);
+              navigate(`/chat?chat=${toast.chatId}`);
+            }}
+          >
+            <div className="w-8 h-8 rounded-full bg-cream-200 shrink-0 flex items-center justify-center">
+              <MessageCircle size={16} className="text-brown-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-brown-900 truncate">{toast.title}</p>
+              <p className="text-xs text-brown-600 line-clamp-2 mt-0.5">{toast.message}</p>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); removeToast(toast.id); }}
+              className="text-brown-400 hover:text-brown-600 p-1"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
     </nav>
   );
 }
