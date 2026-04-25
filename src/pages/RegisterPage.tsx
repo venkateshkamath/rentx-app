@@ -29,7 +29,7 @@ export default function RegisterPage() {
   const [otp, setOtp] = useState(['', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [resendTimer, setResendTimer] = useState(30);
+  const [resendTimer, setResendTimer] = useState(60);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function RegisterPage() {
     }
 
     setStep('otp');
-    setResendTimer(30);
+    setResendTimer(60);
     setTimeout(() => otpRefs.current[0]?.focus(), 100);
   };
 
@@ -128,9 +128,10 @@ export default function RegisterPage() {
   };
 
   const handleResend = async () => {
-    setResendTimer(30);
+    setResendTimer(60);
     setOtp(['', '', '', '']);
     await sendOtp(form.email.toLowerCase().trim());
+    setTimeout(() => otpRefs.current[0]?.focus(), 100);
   };
 
   return (
