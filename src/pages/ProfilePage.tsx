@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  MapPin, Star, Package, X,
-  Plus, Camera, Edit2,
+  MapPin, Star, Package,
+  Plus, Camera, Edit2, Lock, Eye, EyeOff,
   Award, Calendar, ShoppingBag, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -11,9 +11,10 @@ import ProductCard from '../components/products/ProductCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
+import LocationAutocomplete from '../components/ui/LocationAutocomplete';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
-import type { Product } from '../types';
+import type { LocationData, Product } from '../types';
 import UserAvatar from '../components/ui/UserAvatar';
 
 /* ─── Types ─── */
@@ -71,7 +72,17 @@ export default function ProfilePage() {
   const [avatarError, setAvatarError] = useState('');
   const [avatarUploading, setAvatarUploading] = useState(false);
 
-  const [profile,   setProfile]   = useState({ name: user?.name ?? '', location: user?.location ?? '' });
+  /* ── Change password state ── */
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwForm, setPwForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [showOldPw, setShowOldPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+
+  const [profile,   setProfile]   = useState({ name: user?.name ?? '', location: user?.location ?? null as LocationData | null });
   const [editForm,  setEditForm]  = useState(profile);
 
   /* ── Data ── */
@@ -123,7 +134,6 @@ export default function ProfilePage() {
   }
 
   /* ── Derived ── */
-  const availableListings = myListings.filter(p => p.status === 'available');
   const rentedOutListings = myListings.filter(p => p.status === 'rented');
   const totalRented       = myRentals.length + rentedOutListings.length;
 
@@ -136,9 +146,47 @@ export default function ProfilePage() {
     setSaving(true);
     await new Promise(r => setTimeout(r, 600));
     setProfile(editForm);
-    updateUser({ name: editForm.name, location: editForm.location });
+    updateUser({ name: editForm.name, location: editForm.location ?? undefined });
     setSaving(false);
     setEditOpen(false);
+  };
+
+  const handleChangePassword = async () => {
+    setPwError('');
+    setPwSuccess('');
+
+    if (!pwForm.oldPassword || !pwForm.newPassword || !pwForm.confirmPassword) {
+      setPwError('All fields are required.');
+      return;
+    }
+    if (pwForm.newPassword.length < 6) {
+      setPwError('New password must be at least 6 characters.');
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwError('New passwords do not match.');
+      return;
+    }
+    if (pwForm.oldPassword === pwForm.newPassword) {
+      setPwError('New password must differ from the current one.');
+      return;
+    }
+
+    setPwLoading(true);
+    try {
+      const res = await api.auth.changePassword(pwForm.oldPassword, pwForm.newPassword);
+      if (!res.success) {
+        setPwError(res.message ?? 'Something went wrong.');
+      } else {
+        setPwSuccess('Password changed successfully!');
+        setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+        setTimeout(() => { setPwOpen(false); setPwSuccess(''); }, 1500);
+      }
+    } catch (err) {
+      setPwError((err as Error).message ?? 'Failed to change password.');
+    } finally {
+      setPwLoading(false);
+    }
   };
 
   const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -201,7 +249,7 @@ export default function ProfilePage() {
 
           {profile.location && (
             <div className="inline-flex items-center gap-1.5 bg-white/10 text-cream-200 text-xs px-3 py-1.5 rounded-full mb-6">
-              <MapPin size={11} /> {profile.location}
+              <MapPin size={11} /> {typeof profile.location === 'string' ? profile.location : profile.location.name}
             </div>
           )}
 
@@ -213,6 +261,12 @@ export default function ProfilePage() {
               className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all border border-white/20 backdrop-blur-sm"
             >
               <Edit2 size={14} /> Edit Profile
+            </button>
+            <button
+              onClick={() => { setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); setPwError(''); setPwSuccess(''); setPwOpen(true); }}
+              className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all border border-white/20 backdrop-blur-sm"
+            >
+              <Lock size={14} /> Change Password
             </button>
             <button
               onClick={() => navigate('/list-product')}
@@ -569,12 +623,12 @@ export default function ProfilePage() {
           <div>
             <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
             <div className="relative">
-              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400" />
-              <input
-                value={editForm.location}
-                onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
+              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400 z-10" />
+              <LocationAutocomplete
+                value={editForm.location as LocationData | null}
+                onChange={loc => setEditForm(f => ({ ...f, location: loc }))}
                 className="input-field pl-9"
-                placeholder="City, State"
+                placeholder="Search your city…"
               />
             </div>
           </div>
@@ -582,6 +636,88 @@ export default function ProfilePage() {
           <div className="flex gap-3 pt-2">
             <Button onClick={handleSave} loading={saving} className="flex-1">Save Changes</Button>
             <Button variant="secondary" onClick={() => setEditOpen(false)} className="flex-1">Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ══ CHANGE PASSWORD MODAL ══ */}
+      <Modal open={pwOpen} onClose={() => setPwOpen(false)} title="Change Password" maxWidth="max-w-md">
+        <div className="space-y-4">
+          {/* Current password */}
+          <div>
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">Current Password</label>
+            <div className="relative">
+              <input
+                type={showOldPw ? 'text' : 'password'}
+                value={pwForm.oldPassword}
+                onChange={e => setPwForm(f => ({ ...f, oldPassword: e.target.value }))}
+                className="input-field pr-10"
+                placeholder="Enter current password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowOldPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600 transition-colors"
+              >
+                {showOldPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* New password */}
+          <div>
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">New Password</label>
+            <div className="relative">
+              <input
+                type={showNewPw ? 'text' : 'password'}
+                value={pwForm.newPassword}
+                onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
+                className="input-field pr-10"
+                placeholder="Min. 6 characters"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600 transition-colors"
+              >
+                {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Confirm new password */}
+          <div>
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">Confirm New Password</label>
+            <div className="relative">
+              <input
+                type={showConfirmPw ? 'text' : 'password'}
+                value={pwForm.confirmPassword}
+                onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                className="input-field pr-10"
+                placeholder="Re-enter new password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600 transition-colors"
+              >
+                {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {pwError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">{pwError}</div>
+          )}
+          {pwSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2.5 text-sm text-green-700 flex items-center gap-2">
+              <CheckCircle2 size={16} /> {pwSuccess}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button onClick={handleChangePassword} loading={pwLoading} className="flex-1">Change Password</Button>
+            <Button variant="secondary" onClick={() => setPwOpen(false)} className="flex-1">Cancel</Button>
           </div>
         </div>
       </Modal>
