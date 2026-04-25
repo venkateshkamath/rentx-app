@@ -61,7 +61,11 @@ export default function ForgotPasswordPage() {
     if (!email.trim()) { setError('Email is required.'); return; }
     setLoading(true);
     try {
+
       await api.auth.verifyEmail(email.trim());
+
+      await api.auth.forgotPassword(email.trim());
+
       setStep('otp');
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (err) {
@@ -84,6 +88,7 @@ export default function ForgotPasswordPage() {
     } finally {
       setLoading(false);
     }
+
   };
 
   const handleResend = async () => {
@@ -91,7 +96,11 @@ export default function ForgotPasswordPage() {
     setOtp(['', '', '', '']);
     setResendTimer(60);
     try {
+
       await api.auth.verifyEmail(email.trim());
+
+      await api.auth.forgotPassword(email.trim());
+
     } catch (err) {
       setError((err as Error).message ?? 'Failed to resend OTP.');
     }
@@ -110,6 +119,9 @@ export default function ForgotPasswordPage() {
       setStep('done');
     } catch (err) {
       setError((err as Error).message ?? 'Failed to reset password. Please try again.');
+
+      setStep('otp');
+
     } finally {
       setLoading(false);
     }
@@ -221,7 +233,9 @@ export default function ForgotPasswordPage() {
                   <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600 mb-4">{error}</div>
                 )}
 
+
                 <Button type="submit" loading={loading} className="w-full mb-4">
+
                   Verify OTP <ArrowRight size={16} />
                 </Button>
 
