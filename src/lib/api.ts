@@ -68,6 +68,8 @@ export const api = {
     getAll: () => request<{ success: boolean; data: unknown[] }>('/chat'),
     uploadImage: (formData: FormData) =>
       request<{ success: boolean; url: string; publicId: string }>('/chat/image', { method: 'POST', body: formData }),
+    delete: (chatId: string) =>
+      request<{ success: boolean; message: string }>(`/chat/${chatId}`, { method: 'DELETE' }),
   },
 
   products: {

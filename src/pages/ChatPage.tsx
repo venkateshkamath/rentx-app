@@ -2,12 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Send, ArrowLeft, Package, Circle, ImagePlus, X, Loader2,
-  MessageCircle, Bot, Check, XCircle, Clock, AlertCircle, MapPin,
+  MessageCircle, Bot, Check, XCircle, Clock, AlertCircle, MapPin, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import UserAvatar from '../components/ui/UserAvatar';
+import Modal from '../components/ui/Modal';
+import Button from '../components/ui/Button';
 
 /* ─── Types ─── */
 type ChatStatus = 'pending' | 'active' | 'rejected' | 'disabled' | null;
@@ -89,7 +91,6 @@ export default function ChatPage() {
   const [activeChat, setActiveChat]       = useState<ActiveChat | null>(null);
   const [chatStatus, setChatStatus]       = useState<ChatStatus>(null);
   const [disabledReason, setDisabledReason] = useState('');
-  const [activeChatOwnerId, setActiveChatOwnerId] = useState<string | null>(null);
 
   /* ── Input / image ── */
   const [input, setInput]                   = useState('');
@@ -106,8 +107,11 @@ export default function ChatPage() {
   const [joinError, setJoinError]         = useState('');
   const [connectFailed, setConnectFailed] = useState(false);
 
-  /* ── Accept/Reject loading ── */
+  /* ── Accept/Reject/Delete loading ── */
   const [requestActionLoading, setRequestActionLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen]       = useState(false);
+  const [deleteLoading, setDeleteLoading]               = useState(false);
+  const [deleteError, setDeleteError]                   = useState('');
 
   /* ── Unread counts ── */
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -216,8 +220,6 @@ export default function ChatPage() {
       // Figure out who the owner is from participants (owner = not current user, but we don't know
       // directly — we'll derive it from the product owner which is stored in productId).
       // For now store participants so we can find the other user.
-      const ownerParticipant = data.participants?.find(p => p._id !== uid);
-      setActiveChatOwnerId(ownerParticipant?._id ?? null);
 
       setActiveChatId(data.chatId);
       setChatStatus(data.status);
@@ -393,59 +395,29 @@ export default function ChatPage() {
     );
   }
 
-  /* ── Derived: is the current user the owner of this chat? ── */
-  const isOwnerOfActiveChat = !!(
-    user &&
-    activeChatOwnerId &&
-    // The owner is NOT the activeChatOwnerId — activeChatOwnerId is the *other* user.
-    // We need to check via productId ownership. Since we store ownerId in product,
-    // and the backend participants are [ownerId, requesterId], we check ownerIdParam
-    // OR if the other user's ID matches ownerIdParam.
-    // Simpler: owner is whoever is NOT the requester. We know from productId whether
-    // we own the product. Use ownerIdParam when coming from product page, otherwise
-    // check via chatList (other user's id ≠ current user means current user could be owner).
-    // Best approach: check if activeChatOwnerId === user.id is FALSE (they are the OTHER user).
-    // The owner is the user whose id is NOT activeChatOwnerId.
-    // Actually activeChatOwnerId is set from the first participant who is NOT the current user.
-    // If the current user IS the product owner, then activeChatOwnerId is the requester.
-    // We need to know if the current user owns the product.
-    // We'll compare with ownerIdParam when available, otherwise rely on sidebar data.
-    (() => {
-      if (ownerIdParam) return user.id !== ownerIdParam; // current user is NOT the requester's owner param
-      const meta = chatList.find(c => c.chatId === activeChatId);
-      if (meta) return meta.otherUser.id !== user.id; // shouldn't be equal but defensive
-      return false;
-    })()
-  );
-
-  // A cleaner way: track ownership flag from chat history
-  // The owner of a product is whoever is NOT the user who initiated the chat (requester).
-  // Since we pass ownerIdParam in URL when requesting, we know: if ownerIdParam exists and
-  // ownerIdParam !== user.id → current user is the requester. Otherwise current user may be owner.
-  // For sidebar-selected chats we need another approach:
-  const amIOwner = (() => {
-    if (ownerIdParam) return user?.id !== ownerIdParam;
-    // For chats loaded from sidebar: if the other user initiated, we'd be the owner.
-    // We can't know without additional data — default to false (safe: non-owner can't accept).
-    // The socket join response doesn't tell us who the product owner is directly.
-    // We'd need the product's owner from Chat participants order or a separate field.
-    // For now: the "ownerIdParam" path covers the email link & product page.
-    // Sidebar-selected chats will show accept/reject if ownerIdParam is absent and chatStatus===pending.
-    // We'll store isOwnerChat in state from chat-history response in the future.
-    return false;
-  })();
-
-  // Use productIdParam's ownerIdParam — but for sidebar chats we track via _activeChatOwnerId
-  // The real check: current user is owner if their id is NOT in the "requester" slot.
-  // Since backend creates chat as [ownerId, requesterId], participant[0] is always owner.
-  // We expose this via the participants array in chat-history.
-  // activeChatOwnerId = first non-current-user participant. If the product owner is the other user,
-  // then current user is the requester. If current user IS the owner, activeChatOwnerId is requester.
-  // We need to distinguish. Let's add a dedicated state: isCurrentUserOwner.
-  // We'll derive it: if ownerIdParam is set → !amIRequester. Otherwise check if I am in owner position.
-  // Since we know ownerIdParam from URL for new chats, and for existing chats we can check productId.
-
   /* ── Actions ── */
+  const handleDeleteChat = async () => {
+    if (!activeChatId) return;
+    setDeleteError('');
+    setDeleteLoading(true);
+    try {
+      const res = await api.chat.delete(activeChatId);
+      if (res.success) {
+        setChatList(prev => prev.filter(c => c.chatId !== activeChatId));
+        setActiveChatId(null);
+        setActiveChat(null);
+        setMobileView('list');
+        setDeleteConfirmOpen(false);
+      } else {
+        setDeleteError(res.message || "Failed to delete chat.");
+      }
+    } catch (err) {
+      setDeleteError((err as Error).message || "Failed to delete chat.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const sendMessage = () => {
     if ((!input.trim() && !pendingImage) || !activeChat || !user) return;
     if (chatStatus !== 'active') return;
@@ -519,7 +491,6 @@ export default function ChatPage() {
     setActiveChat(null);
     setChatStatus(null);
     setDisabledReason('');
-    setActiveChatOwnerId(null);
     setJoinError('');
     setInput('');
     setPendingImage(null);
@@ -759,6 +730,16 @@ export default function ChatPage() {
                   className="hidden sm:flex items-center gap-1.5 text-xs text-brown-500 hover:text-brown-700 bg-cream-100 border border-cream-300 px-3 py-1.5 rounded-lg transition-colors shrink-0"
                 >
                   <Package size={12} /> View Item
+                </button>
+              )}
+
+              {activeChatId && (
+                <button
+                  onClick={() => { setDeleteError(''); setDeleteConfirmOpen(true); }}
+                  className="flex items-center gap-1.5 p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                  title="Delete Chat"
+                >
+                  <Trash2 size={16} />
                 </button>
               )}
             </div>
@@ -1001,6 +982,38 @@ export default function ChatPage() {
           </>
         )}
       </div>
+
+      {/* ══ DELETE CONFIRM MODAL ══ */}
+      <Modal open={deleteConfirmOpen} onClose={() => !deleteLoading && setDeleteConfirmOpen(false)} title="Delete Chat" maxWidth="max-w-md">
+        <div className="space-y-4">
+          <p className="text-brown-700 text-sm">
+            Are you sure you want to permanently delete this conversation? This action cannot be undone.
+          </p>
+          {deleteError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">
+              {deleteError}
+            </div>
+          )}
+          <div className="flex gap-3 pt-2">
+            <Button
+              onClick={handleDeleteChat}
+              loading={deleteLoading}
+              className="flex-1 bg-red-600 hover:bg-red-700 border-transparent text-white"
+            >
+              Delete
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={deleteLoading}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 }
