@@ -7,7 +7,6 @@ import { mapApiProduct } from '../lib/mapProduct';
 
 const CATEGORIES: Category[] = ['Electronics', 'Furniture', 'Clothing', 'Books', 'Sports', 'Appliances', 'Vehicles', 'Tools', 'Art', 'Other'];
 const CONDITIONS: Condition[] = ['Like New', 'Good', 'Fair', 'Used'];
-const CITIES = ['All Cities', 'Bangalore, KA', 'Mumbai, MH', 'Delhi, DL', 'Pune, MH', 'Chennai, TN', 'Hyderabad, TS', 'Goa, GA'];
 
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -17,7 +16,7 @@ export default function HomePage() {
   const [query, setQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
   const [selectedConditions, setSelectedConditions] = useState<Condition[]>([]);
-  const [selectedCity, setSelectedCity] = useState('All Cities');
+  const [selectedCityPlaceId, setSelectedCityPlaceId] = useState('all');
   const [maxPrice, setMaxPrice] = useState(2000);
   const [sortBy, setSortBy] = useState<'relevance' | 'price-asc' | 'price-desc' | 'rating'>('relevance');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -37,6 +36,17 @@ export default function HomePage() {
       });
   }, []);
 
+  // Derive unique cities from products
+  const cities = useMemo(() => {
+    const map = new Map<string, string>(); // placeId -> name
+    for (const p of products) {
+      if (p.location?.placeId && p.location.name) {
+        map.set(p.location.placeId, p.location.name);
+      }
+    }
+    return Array.from(map.entries()).map(([placeId, name]) => ({ placeId, name }));
+  }, [products]);
+
   const toggleCategory = (cat: Category) => {
     setSelectedCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   };
@@ -48,7 +58,7 @@ export default function HomePage() {
   const clearFilters = () => {
     setSelectedCategories([]);
     setSelectedConditions([]);
-    setSelectedCity('All Cities');
+    setSelectedCityPlaceId('all');
     setMaxPrice(2000);
     setQuery('');
   };
@@ -56,7 +66,7 @@ export default function HomePage() {
   const hasActiveFilters =
     selectedCategories.length > 0 ||
     selectedConditions.length > 0 ||
-    selectedCity !== 'All Cities' ||
+    selectedCityPlaceId !== 'all' ||
     maxPrice < 2000 ||
     !!query.trim();
 
@@ -73,7 +83,7 @@ export default function HomePage() {
     }
     if (selectedCategories.length > 0) list = list.filter(product => selectedCategories.includes(product.category));
     if (selectedConditions.length > 0) list = list.filter(product => selectedConditions.includes(product.condition));
-    if (selectedCity !== 'All Cities') list = list.filter(product => product.location === selectedCity);
+    if (selectedCityPlaceId !== 'all') list = list.filter(product => product.location?.placeId === selectedCityPlaceId);
     list = list.filter(product => product.price <= maxPrice);
 
     if (sortBy === 'price-asc') list.sort((a, b) => a.price - b.price);
@@ -81,7 +91,7 @@ export default function HomePage() {
     if (sortBy === 'rating') list.sort((a, b) => b.rating - a.rating);
 
     return list;
-  }, [maxPrice, query, selectedCategories, selectedCity, selectedConditions, sortBy, products]);
+  }, [maxPrice, query, selectedCategories, selectedCityPlaceId, selectedConditions, sortBy, products]);
 
   const renderFilterSidebar = () => (
     <aside className="w-full space-y-6">
@@ -127,11 +137,12 @@ export default function HomePage() {
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-brown-500">City</h3>
         <div className="relative">
           <select
-            value={selectedCity}
-            onChange={event => setSelectedCity(event.target.value)}
+            value={selectedCityPlaceId}
+            onChange={event => setSelectedCityPlaceId(event.target.value)}
             className="input-field appearance-none pr-8 text-sm"
           >
-            {CITIES.map(city => <option key={city}>{city}</option>)}
+            <option value="all">All Cities</option>
+            {cities.map(city => <option key={city.placeId} value={city.placeId}>{city.name}</option>)}
           </select>
           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-brown-400" />
         </div>

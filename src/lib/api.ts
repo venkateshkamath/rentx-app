@@ -1,5 +1,7 @@
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api';
 
+import type { LocationData } from '../types';
+
 export function getToken(): string | null {
   return localStorage.getItem('rentx_token');
 }
@@ -43,7 +45,7 @@ export const api = {
       email: string;
       password: string;
       phone: string;
-      location: string;
+      location: LocationData;
     }) => request('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
 
     verifyEmail: (email: string) =>

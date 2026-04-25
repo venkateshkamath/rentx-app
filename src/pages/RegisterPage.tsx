@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight, Mail, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
+import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+import type { LocationData } from '../types';
 
 type Step = 'details' | 'otp' | 'success';
 
@@ -11,7 +13,7 @@ interface FormData {
   username: string;
   email: string;
   phone: string;
-  location: string;
+  location: LocationData | null;
   password: string;
   confirmPassword: string;
 }
@@ -21,7 +23,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('details');
   const [form, setForm] = useState<FormData>({
-    name: '', username: '', email: '', phone: '', location: '', password: '', confirmPassword: '',
+    name: '', username: '', email: '', phone: '', location: null, password: '', confirmPassword: '',
   });
   const [showPw, setShowPw] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '']);
@@ -62,7 +64,7 @@ export default function RegisterPage() {
       email: form.email.toLowerCase().trim(),
       password: form.password,
       phone: form.phone,
-      location: form.location,
+      location: form.location!,
     });
 
     if (!regResult.ok) {
@@ -212,11 +214,10 @@ export default function RegisterPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-brown-700 mb-1.5">Location / City</label>
-                    <input
-                      type="text"
+                    <LocationAutocomplete
                       value={form.location}
-                      onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-                      placeholder="Bangalore, KA"
+                      onChange={loc => setForm(f => ({ ...f, location: loc }))}
+                      placeholder="Search your city…"
                       className="input-field"
                     />
                   </div>

@@ -11,9 +11,10 @@ import ProductCard from '../components/products/ProductCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
+import LocationAutocomplete from '../components/ui/LocationAutocomplete';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
-import type { Product } from '../types';
+import type { LocationData, Product } from '../types';
 import UserAvatar from '../components/ui/UserAvatar';
 
 type Tab = 'listings' | 'reviews' | 'photos';
@@ -47,7 +48,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState({
     name: user?.name ?? '',
     bio: 'Passionate about sharing — cameras, bikes, and good reads.',
-    location: user?.location ?? '',
+    location: user?.location ?? null as LocationData | null,
   });
   const [editForm, setEditForm] = useState(profile);
 
@@ -88,7 +89,7 @@ export default function ProfilePage() {
     setSaving(true);
     await new Promise(r => setTimeout(r, 600));
     setProfile(editForm);
-    updateUser({ name: editForm.name, location: editForm.location });
+    updateUser({ name: editForm.name, location: editForm.location ?? undefined });
     setSaving(false);
     setEditOpen(false);
   };
@@ -205,7 +206,7 @@ export default function ProfilePage() {
           {/* Location pill */}
           <div className="inline-flex items-center gap-1.5 bg-white/10 text-cream-200 text-xs px-3 py-1.5 rounded-full mb-6">
             <MapPin size={11} />
-            {profile.location}
+            {profile.location?.name || 'Location not set'}
           </div>
 
           {/* Bio */}
@@ -516,15 +517,15 @@ export default function ProfilePage() {
             />
           </div>
 
-          <div>
+            <div>
             <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
             <div className="relative">
-              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400" />
-              <input
+              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400 z-10" />
+              <LocationAutocomplete
                 value={editForm.location}
-                onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
+                onChange={loc => setEditForm(f => ({ ...f, location: loc }))}
                 className="input-field pl-9"
-                placeholder="City, State"
+                placeholder="Search your city…"
               />
             </div>
           </div>

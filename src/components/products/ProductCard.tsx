@@ -37,7 +37,7 @@ export default function ProductCard({ product }: ProductCardProps) {
 
         <div className="flex items-center gap-1 text-brown-400 text-xs mb-3">
           <MapPin size={11} />
-          <span>{product.location}</span>
+          <span>{product.location?.name || 'Unknown'}</span>
         </div>
 
         <div className="mt-auto flex items-center justify-between">

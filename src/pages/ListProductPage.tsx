@@ -4,7 +4,8 @@ import { Upload, X, CheckCircle2, Plus, ArrowRight, ArrowLeft } from 'lucide-rea
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import UserAvatar from '../components/ui/UserAvatar';
-import type { Category, Condition } from '../types';
+import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+import type { Category, Condition, LocationData } from '../types';
 import { api } from '../lib/api';
 
 const CATEGORIES: Category[] = ['Electronics', 'Furniture', 'Clothing', 'Books', 'Sports', 'Appliances', 'Vehicles', 'Tools', 'Art', 'Other'];
@@ -18,7 +19,7 @@ interface FormData {
   category: Category | '';
   condition: Condition | '';
   price: string;
-  location: string;
+  location: LocationData | null;
 }
 
 const STEPS: { key: Step; label: string }[] = [
@@ -40,7 +41,7 @@ export default function ListProductPage() {
 
   const [form, setForm] = useState<FormData>({
     title: '', description: '', category: '', condition: '',
-    price: '', location: user?.location ?? '',
+    price: '', location: user?.location ?? null,
   });
 
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -72,7 +73,7 @@ export default function ListProductPage() {
     if (!form.category)           e.category    = 'Select a category';
     if (!form.condition)          e.condition   = 'Select condition';
     if (!form.price || isNaN(Number(form.price))) e.price = 'Enter a valid price';
-    if (!form.location.trim())    e.location    = 'Location is required';
+    if (!form.location)                e.location    = 'Location is required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -93,7 +94,7 @@ export default function ListProductPage() {
       formData.append('description', form.description);
       formData.append('category', form.category);
       formData.append('condition', form.condition);
-      formData.append('location', form.location);
+      formData.append('location', JSON.stringify(form.location));
       formData.append('email', user.email);
       imageFiles.forEach(file => formData.append('images', file));
       console.log(Object.fromEntries(formData));
@@ -223,11 +224,11 @@ export default function ListProductPage() {
                     {errors.price && <p className="text-red-500 text-xs mt-1">{errors.price}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
-                    <input
+                    <label className="block text-sm font-medium text-brown-700 mb-1.5">Pickup Location</label>
+                    <LocationAutocomplete
                       value={form.location}
-                      onChange={e => set('location', e.target.value)}
-                      placeholder="e.g. Bangalore, KA"
+                      onChange={loc => set('location', loc)}
+                      placeholder="Search pickup city…"
                       className="input-field"
                     />
                     {errors.location && <p className="text-red-500 text-xs mt-1">{errors.location}</p>}
@@ -333,7 +334,7 @@ export default function ListProductPage() {
                       <span className="text-xs text-brown-400">{user?.name}</span>
                     </div>
                   </div>
-                  {form.location && <p className="text-xs text-brown-400 mt-2">📍 {form.location}</p>}
+                  {form.location && <p className="text-xs text-brown-400 mt-2">📍 {form.location.name}</p>}
                 </div>
               </div>
 
@@ -368,7 +369,7 @@ export default function ListProductPage() {
                   variant="secondary"
                   onClick={() => {
                     setStep('details');
-                    setForm({ title: '', description: '', category: '', condition: '', price: '', location: user?.location ?? '' });
+                    setForm({ title: '', description: '', category: '', condition: '', price: '', location: user?.location ?? null });
                     setErrors({});
                     imagePreviews.forEach(url => URL.revokeObjectURL(url));
                     setImageFiles([]);

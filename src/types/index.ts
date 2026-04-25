@@ -2,6 +2,13 @@ export type ListingType = 'rent' | 'exchange';
 export type Category = 'Electronics' | 'Furniture' | 'Clothing' | 'Books' | 'Sports' | 'Appliances' | 'Vehicles' | 'Tools' | 'Art' | 'Other';
 export type Condition = 'Like New' | 'Good' | 'Fair' | 'Used';
 
+export interface LocationData {
+  placeId: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 export interface ProductImage {
   url: string;
   caption?: string;
@@ -17,7 +24,7 @@ export interface Product {
   category: Category;
   condition: Condition;
   type: ListingType;
-  location: string;
+  location: LocationData;
   ownerId: string;
   ownerName: string;
   ownerAvatar: string;
@@ -84,6 +91,6 @@ export interface AuthUser {
   avatar: string;
   email: string;
   phone: string;
-  location?: string;
+  location?: LocationData;
   createdAt?: string;
 }

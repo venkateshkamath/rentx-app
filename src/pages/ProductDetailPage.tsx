@@ -23,7 +23,8 @@ import Button from '../components/ui/Button';
 import ProductCard from '../components/products/ProductCard';
 import ReviewSection from '../components/products/ReviewSection';
 import UserAvatar from '../components/ui/UserAvatar';
-import type { Category, Condition, Product } from '../types';
+import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+import type { Category, Condition, LocationData, Product } from '../types';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
 
@@ -36,7 +37,7 @@ interface EditForm {
   category: Category | '';
   condition: Condition | '';
   price: string;
-  location: string;
+  location: LocationData | null;
   tags: string;
 }
 
@@ -65,7 +66,7 @@ export default function ProductDetailPage() {
 
   // Owner edit state
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState<EditForm>({ title: '', description: '', category: '', condition: '', price: '', location: '', tags: '' });
+  const [editForm, setEditForm] = useState<EditForm>({ title: '', description: '', category: '', condition: '', price: '', location: null, tags: '' });
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
   const [statusLoading, setStatusLoading] = useState(false);
@@ -156,7 +157,7 @@ export default function ProductDetailPage() {
         productPrice: Number(editForm.price),
         category: editForm.category || undefined,
         condition: editForm.condition || undefined,
-        location: editForm.location,
+        location: editForm.location ? JSON.stringify(editForm.location) : undefined,
         tags: editForm.tags,
       }) as { data: unknown };
       setProduct(mapApiProduct(res.data));
@@ -398,7 +399,7 @@ export default function ProductDetailPage() {
                 <StarRating rating={product.rating} reviewCount={product.reviewCount} />
                 <span className="text-brown-300">·</span>
                 <div className="flex items-center gap-1 text-brown-400 text-xs">
-                  <MapPin size={12} /> {product.location || 'Location not set'}
+                  <MapPin size={12} /> {product.location?.name || 'Location not set'}
                 </div>
               </div>
 
@@ -602,10 +603,10 @@ export default function ProductDetailPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
-              <input
+              <LocationAutocomplete
                 value={editForm.location}
-                onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
-                placeholder="City, State"
+                onChange={loc => setEditForm(f => ({ ...f, location: loc }))}
+                placeholder="Search city…"
                 className="input-field"
               />
             </div>

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import type { AuthUser } from '../types';
+import type { AuthUser, LocationData } from '../types';
 import { api, setToken, clearToken } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
 
@@ -14,7 +14,7 @@ interface AuthContextType {
     email: string;
     password: string;
     phone: string;
-    location: string;
+    location: LocationData;
   }) => Promise<{ ok: boolean; error?: string }>;
   sendOtp: (email: string) => Promise<{ ok: boolean; error?: string }>;
   verifyOTP: (email: string, otp: string) => Promise<{ ok: boolean; error?: string }>;
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const res = await api.auth.login(email, password) as {
-        data: { token: string; user: { userId: string; name: string; username: string; email: string; phone: string; location: string; avatar?: string; createdAt: string } };
+        data: { token: string; user: { userId: string; name: string; username: string; email: string; phone: string; location: LocationData; avatar?: string; createdAt: string } };
       };
       setToken(res.data.token);
       setUser({
@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string;
     password: string;
     phone: string;
-    location: string;
+    location: LocationData;
   }): Promise<{ ok: boolean; error?: string }> => {
     try {
       await api.auth.register(payload);
