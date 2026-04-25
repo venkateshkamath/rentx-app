@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Send, ArrowLeft, Package, Circle, ImagePlus, X, Loader2,
-  MessageCircle, Bot, Check, XCircle, Clock, AlertCircle,
+  MessageCircle, Bot, Check, XCircle, Clock, AlertCircle, MapPin,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../lib/socket';
@@ -97,6 +97,10 @@ export default function ChatPage() {
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError]         = useState('');
 
+  /* ── Location sharing ── */
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError]     = useState('');
+
   /* ── Connection ── */
   const [connected, setConnected]         = useState(false);
   const [joinError, setJoinError]         = useState('');
@@ -145,9 +149,20 @@ export default function ChatPage() {
   useEffect(() => { if (isAuthenticated) loadChatList(); }, [isAuthenticated, loadChatList]);
 
   /* ── Scroll to bottom ── */
+  const isFirstScroll = useRef(true);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!activeChat?.messages) return;
+    // Instant scroll on first load, smooth on new messages
+    messagesEndRef.current?.scrollIntoView({
+      behavior: isFirstScroll.current ? 'instant' : 'smooth',
+    });
+    isFirstScroll.current = false;
   }, [activeChat?.messages]);
+
+  // Reset first-scroll flag when switching chats
+  useEffect(() => {
+    isFirstScroll.current = true;
+  }, [activeChatId]);
 
   /* ══════════════════════════════════════════════════════════════
      EFFECT 1 — Socket listeners
@@ -464,6 +479,41 @@ export default function ChatPage() {
     }
   };
 
+  const sendLocation = () => {
+    if (!activeChat || !user || chatStatus !== 'active') return;
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setLocationLoading(true);
+    setLocationError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocationLoading(false);
+        const { latitude, longitude } = pos.coords;
+        const mapsUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
+        const locationText = `📍 My Location: ${mapsUrl}`;
+        getSocket().emit('send-message', {
+          chatId: activeChat.chatId,
+          senderId: user.id,
+          content: locationText,
+          imageUrl: '',
+          imageName: '',
+        });
+        setTimeout(() => inputRef.current?.focus(), 0);
+      },
+      (err) => {
+        setLocationLoading(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocationError('Location access denied. Please allow location in your browser settings.');
+        } else {
+          setLocationError('Could not get your location. Please try again.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const selectChat = (chatId: string) => {
     if (activeChatId === chatId) { setMobileView('chat'); return; }
     setActiveChat(null);
@@ -530,7 +580,7 @@ export default function ChatPage() {
      RENDER
   ═══════════════════════════════════════════════════════════════ */
   return (
-    <div className="h-[calc(100vh-64px)] bg-cream-100 flex overflow-hidden">
+    <div className="flex-1 min-h-0 bg-cream-100 flex overflow-hidden">
 
       {/* ══ LEFT SIDEBAR ══ */}
       <aside className={`
@@ -819,7 +869,26 @@ export default function ChatPage() {
                           ? 'bg-brown-600 text-cream-100 rounded-br-sm'
                           : 'bg-white text-brown-800 rounded-bl-sm border border-cream-200'
                       }`}>
-                        {msg.content && <p className="leading-relaxed">{msg.content}</p>}
+                        {msg.content && (() => {
+                          // Render location messages with a clickable link
+                          const locationMatch = msg.content.match(/^(📍 My Location: )(https:\/\/maps\.google\.com\/maps\?q=[\d.,]+)$/);
+                          if (locationMatch) {
+                            return (
+                              <p className="leading-relaxed">
+                                📍 My Location:{' '}
+                                <a
+                                  href={locationMatch[2]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`underline font-medium break-all ${isMine ? 'text-cream-200 hover:text-white' : 'text-brown-600 hover:text-brown-800'}`}
+                                >
+                                  Open in Maps
+                                </a>
+                              </p>
+                            );
+                          }
+                          return <p className="leading-relaxed">{msg.content}</p>;
+                        })()}
                         {msg.imageUrl && (
                           <img
                             src={msg.imageUrl}
@@ -853,6 +922,12 @@ export default function ChatPage() {
                     <button onClick={() => setImageError('')}><X size={13} /></button>
                   </div>
                 )}
+                {locationError && (
+                  <div className="mb-3 flex items-center justify-between rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">
+                    {locationError}
+                    <button onClick={() => setLocationError('')}><X size={13} /></button>
+                  </div>
+                )}
                 {pendingImage && !imageUploading && (
                   <div className="mb-3 rounded-xl border border-cream-300 bg-cream-100 p-2.5">
                     <div className="flex items-center gap-3">
@@ -884,9 +959,19 @@ export default function ChatPage() {
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     disabled={inputDisabled || imageUploading}
+                    title="Send image"
                     className="w-10 h-10 rounded-xl border border-cream-300 bg-cream-100 text-brown-500 transition-colors hover:bg-cream-200 disabled:opacity-50 flex items-center justify-center"
                   >
                     {imageUploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendLocation}
+                    disabled={inputDisabled || locationLoading}
+                    title="Share your location"
+                    className="w-10 h-10 rounded-xl border border-cream-300 bg-cream-100 text-brown-500 transition-colors hover:bg-green-50 hover:border-green-300 hover:text-green-600 disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {locationLoading ? <Loader2 size={16} className="animate-spin" /> : <MapPin size={16} />}
                   </button>
                   <input
                     ref={inputRef}

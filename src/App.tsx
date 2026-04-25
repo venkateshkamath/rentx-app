@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -23,27 +24,45 @@ function NotFound() {
   );
 }
 
+/** Wraps the app shell so we can read the current route.
+ *  Chat gets a fixed-height, non-scrolling container.
+ *  Every other page scrolls normally through overflow-y-auto. */
+function AppShell() {
+  const { pathname } = useLocation();
+  const isChatPage = pathname === '/chat';
+
+  return (
+    <div className="h-screen bg-cream-100 flex flex-col overflow-hidden">
+      <Navbar />
+      <main
+        className={`flex-1 min-h-0 page-enter ${
+          isChatPage
+            ? 'flex flex-col overflow-hidden'   // chat: fixed height, internal scroll
+            : 'overflow-y-auto'                  // all other pages: normal scroll
+        }`}
+      >
+        <Routes>
+          <Route path="/"             element={<HomePage />} />
+          <Route path="/login"        element={<LoginPage />} />
+          <Route path="/register"     element={<RegisterPage />} />
+          <Route path="/products/:id" element={<ProductDetailPage />} />
+          <Route path="/chat"         element={<ChatPage />} />
+          <Route path="/list-product" element={<ListProductPage />} />
+          <Route path="/profile"      element={<ProfilePage />} />
+          <Route path="*"             element={<NotFound />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-      <AuthProvider>
-        <div className="min-h-screen bg-cream-100 flex flex-col">
-          <Navbar />
-          <main className="flex-1 page-enter">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/products/:id" element={<ProductDetailPage />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/list-product" element={<ListProductPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </main>
-        </div>
-      </AuthProvider>
+        <AuthProvider>
+          <AppShell />
+        </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

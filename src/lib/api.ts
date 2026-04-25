@@ -77,6 +77,9 @@ export const api = {
     getChatParticipants: (id: string) =>
       request<{ success: boolean; data: unknown[] }>(`/products/${id}/chat-participants`),
 
+    getMyRentals: () =>
+      request<{ success: boolean; data: unknown[] }>('/products/my-rentals'),
+
     updateStatus: (id: string, body: {
       status: string;
       rentedUserId?: string;

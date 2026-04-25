@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MapPin, Star, Package, X,
-  CheckCircle2, Plus, Camera, Edit2,
-  Award, Calendar, CloudUpload
+  Plus, Camera, Edit2,
+  Award, Calendar, ShoppingBag, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { mockReviews } from '../data/mockReviews';
@@ -11,64 +11,102 @@ import ProductCard from '../components/products/ProductCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import LocationAutocomplete from '../components/ui/LocationAutocomplete';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
-import type { LocationData, Product } from '../types';
+import type { Product } from '../types';
 import UserAvatar from '../components/ui/UserAvatar';
 
-type Tab = 'listings' | 'reviews' | 'photos';
+/* ─── Types ─── */
+type MainTab  = 'listings' | 'rented' | 'reviews';
+type RentedSubTab = 'renting' | 'rented-out';
 
-interface UploadedPhoto {
-  id: string; url: string; name: string; caption: string; status: 'uploading' | 'done';
+interface RentedProduct {
+  _id: string;
+  productId: string;
+  productName: string;
+  images: { url: string }[];
+  rentPrice: number;
+  location: string | { name?: string };
+  rentalStartDate: string;
+  rentalEndDate: string;
+  userId: { _id: string; username: string; name: string };
 }
 
-const SAMPLE_URLS = [
-  'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=500',
-  'https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=500',
-  'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500',
-  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=500',
-  'https://images.unsplash.com/photo-1473968512647-3e447244af8f?w=500',
-];
+interface OwnedProduct extends Product {
+  status: string;
+  rentedUserId?: {
+    _id: string;
+    username: string;
+    name: string;
+    location?: string;
+  } | null;
+  rentalStartDate?: string;
+  rentalEndDate?: string;
+}
 
+/* ─── Helpers ─── */
+function locStr(loc: string | { name?: string } | undefined): string {
+  if (!loc) return '—';
+  if (typeof loc === 'string') return loc;
+  return loc.name ?? '—';
+}
+
+function fmtDate(iso?: string) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+══════════════════════════════════════════════════════════════════════ */
 export default function ProfilePage() {
   const { user, isAuthenticated, updateUser } = useAuth();
   const navigate = useNavigate();
-  const fileRef = useRef<HTMLInputElement>(null);
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
-  const [tab, setTab] = useState<Tab>('listings');
-  const [editOpen, setEditOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
-  const [dragOver, setDragOver] = useState(false);
+  const [mainTab,     setMainTab]     = useState<MainTab>('listings');
+  const [rentedSub,   setRentedSub]   = useState<RentedSubTab>('renting');
+  const [editOpen,    setEditOpen]    = useState(false);
+  const [saving,      setSaving]      = useState(false);
   const [avatarError, setAvatarError] = useState('');
   const [avatarUploading, setAvatarUploading] = useState(false);
 
-  const [profile, setProfile] = useState({
-    name: user?.name ?? '',
-    bio: 'Passionate about sharing — cameras, bikes, and good reads.',
-    location: user?.location ?? null as LocationData | null,
-  });
-  const [editForm, setEditForm] = useState(profile);
+  const [profile,   setProfile]   = useState({ name: user?.name ?? '', location: user?.location ?? '' });
+  const [editForm,  setEditForm]  = useState(profile);
 
-  const [myListings, setMyListings] = useState<Product[]>([]);
+  /* ── Data ── */
+  const [myListings,     setMyListings]     = useState<OwnedProduct[]>([]);
   const [listingsLoading, setListingsLoading] = useState(true);
+  const [myRentals,      setMyRentals]      = useState<RentedProduct[]>([]);
+  const [rentalsLoading,  setRentalsLoading]  = useState(true);
+
   const received = mockReviews.slice(0, 4);
 
   useEffect(() => {
+    // Listings (owned products — includes rented-out ones)
     api.products.getUserProducts()
       .then(res => {
-        const mapped = (res.data as unknown[]).map(mapApiProduct);
-        setMyListings(mapped);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapped = ((res.data as any[]) ?? []).map((p: any) => ({
+          ...mapApiProduct(p),          // gives id, title, images, price, etc.
+          status:          p.status,
+          rentedUserId:    p.rentedUserId ?? null,
+          rentalStartDate: p.rentalStartDate ?? null,
+          rentalEndDate:   p.rentalEndDate   ?? null,
+        }));
+        setMyListings(mapped as OwnedProduct[]);
       })
-      .catch(() => {
-        setMyListings([]);
-      })
+      .catch(() => setMyListings([]))
       .finally(() => setListingsLoading(false));
+
+    // Rentals (items I'm renting from others)
+    api.products.getMyRentals()
+      .then(res => setMyRentals((res.data as RentedProduct[]) ?? []))
+      .catch(() => setMyRentals([]))
+      .finally(() => setRentalsLoading(false));
   }, []);
 
-  /* ─── guard ─── */
+  /* ── Guard ── */
   if (!isAuthenticated || !user) {
     return (
       <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4">
@@ -77,19 +115,28 @@ export default function ProfilePage() {
             <Package size={28} className="text-brown-400" />
           </div>
           <h2 className="text-lg font-semibold text-brown-800 mb-2">Sign in to view your profile</h2>
-          <p className="text-brown-400 text-sm mb-5">Manage listings, reviews and your media library</p>
+          <p className="text-brown-400 text-sm mb-5">Manage your listings and rental activity</p>
           <Button onClick={() => navigate('/login')}>Sign In</Button>
         </div>
       </div>
     );
   }
 
-  /* ─── save handler ─── */
+  /* ── Derived ── */
+  const availableListings = myListings.filter(p => p.status === 'available');
+  const rentedOutListings = myListings.filter(p => p.status === 'rented');
+  const totalRented       = myRentals.length + rentedOutListings.length;
+
+  const memberSince = user.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
+    : '—';
+
+  /* ── Handlers ── */
   const handleSave = async () => {
     setSaving(true);
     await new Promise(r => setTimeout(r, 600));
     setProfile(editForm);
-    updateUser({ name: editForm.name, location: editForm.location ?? undefined });
+    updateUser({ name: editForm.name, location: editForm.location });
     setSaving(false);
     setEditOpen(false);
   };
@@ -98,17 +145,8 @@ export default function ProfilePage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setAvatarError('Please choose an image file.');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setAvatarError('Profile photo must be under 5 MB.');
-      return;
-    }
-
+    if (!file.type.startsWith('image/')) { setAvatarError('Please choose an image file.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setAvatarError('Profile photo must be under 5 MB.'); return; }
     setAvatarError('');
     setAvatarUploading(true);
     try {
@@ -123,61 +161,22 @@ export default function ProfilePage() {
     }
   };
 
-  /* ─── photo upload helpers ─── */
-  const enqueuePhoto = (name: string, url: string) => {
-    const id = `ph-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setPhotos(p => [...p, { id, url, name, caption: '', status: 'uploading' }]);
-    setTimeout(
-      () => setPhotos(p => p.map(ph => ph.id === id ? { ...ph, status: 'done' } : ph)),
-      900 + Math.random() * 700,
-    );
-  };
-
-  const handleFiles = (files: File[]) =>
-    files.slice(0, 10).forEach((f, i) => enqueuePhoto(f.name, SAMPLE_URLS[i % SAMPLE_URLS.length]));
-
-  const addSample = () => enqueuePhoto(`photo_${photos.length + 1}.jpg`, SAMPLE_URLS[photos.length % SAMPLE_URLS.length]);
-
-  const memberSince = user.createdAt
-    ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
-    : '—';
-
-  const stats = [
-    { label: 'Listings', value: myListings.length, icon: Package },
-    { label: 'Avg rating', value: '4.8', icon: Star, suffix: '★' },
-    { label: 'Reviews', value: 34, icon: Award },
-    { label: 'Member since', value: memberSince, icon: Calendar },
-  ];
-
-  const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: 'listings', label: 'Listings',        count: myListings.length },
-    { key: 'reviews',  label: 'Reviews',          count: received.length },
-    { key: 'photos',   label: 'Media Library',    count: photos.filter(p => p.status === 'done').length },
-  ];
-
+  /* ─────────────────────────────────────────────────────────────────
+     RENDER
+  ───────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-cream-100">
-      <input
-        ref={avatarFileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleAvatarChange}
-      />
+    <div className="bg-cream-100 min-h-full">
+      <input ref={avatarFileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
 
-      {/* ════════════════════════════════════════
-          HERO
-          ════════════════════════════════════════ */}
+      {/* ══ HERO ══ */}
       <div
         className="relative overflow-hidden"
         style={{ background: 'linear-gradient(135deg, #190C02 0%, #3A1F0A 45%, #6E4522 85%, #8A5E38 100%)' }}
       >
-        {/* Subtle grain texture overlay */}
         <div
           className="absolute inset-0 opacity-[0.06]"
           style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.75\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")' }}
         />
-
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-12 pb-20 text-center">
           {/* Avatar */}
           <div className="relative inline-block mb-4">
@@ -197,27 +196,17 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          {/* Name + username */}
-          <h1 className="text-2xl font-bold text-white mb-1 tracking-tight">
-            {profile.name}
-          </h1>
+          <h1 className="text-2xl font-bold text-white mb-1 tracking-tight">{profile.name}</h1>
           <p className="text-brown-300 text-sm mb-3">@{user.username}</p>
 
-          {/* Location pill */}
-          <div className="inline-flex items-center gap-1.5 bg-white/10 text-cream-200 text-xs px-3 py-1.5 rounded-full mb-6">
-            <MapPin size={11} />
-            {profile.location?.name || 'Location not set'}
-          </div>
-
-          {/* Bio */}
-          <p className="text-brown-200 text-sm max-w-md mx-auto leading-relaxed mb-6">
-            {profile.bio}
-          </p>
-          {avatarError && (
-            <p className="mb-4 text-xs font-medium text-red-200">{avatarError}</p>
+          {profile.location && (
+            <div className="inline-flex items-center gap-1.5 bg-white/10 text-cream-200 text-xs px-3 py-1.5 rounded-full mb-6">
+              <MapPin size={11} /> {profile.location}
+            </div>
           )}
 
-          {/* CTA row */}
+          {avatarError && <p className="mb-4 text-xs font-medium text-red-200">{avatarError}</p>}
+
           <div className="flex items-center justify-center gap-3">
             <button
               onClick={() => { setEditForm(profile); setEditOpen(true); }}
@@ -227,7 +216,7 @@ export default function ProfilePage() {
             </button>
             <button
               onClick={() => navigate('/list-product')}
-              className="inline-flex items-center gap-2 bg-accent text-white text-sm font-semibold px-4 py-2 rounded-xl hover:opacity-90 transition-all shadow-card"
+              className="inline-flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:opacity-90 transition-all shadow-card"
               style={{ backgroundColor: '#C47038' }}
             >
               <Plus size={14} /> Post an Item
@@ -236,19 +225,20 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ════════════════════════════════════════
-          STATS STRIP
-          ════════════════════════════════════════ */}
+      {/* ══ STATS STRIP ══ */}
       <div className="bg-white border-b border-cream-300 shadow-soft">
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
           <div className="flex divide-x divide-cream-300">
-            {stats.map(({ label, value, icon: Icon, suffix }) => (
+            {[
+              { label: 'Listings',     value: myListings.length,  Icon: Package  },
+              { label: 'Rental activity', value: totalRented,     Icon: ShoppingBag },
+              { label: 'Avg rating',   value: '4.8★',             Icon: Star     },
+              { label: 'Member since', value: memberSince,        Icon: Calendar },
+            ].map(({ label, value, Icon }) => (
               <div key={label} className="flex-1 py-5 flex flex-col items-center gap-1">
                 <div className="flex items-center gap-1.5">
                   <Icon size={14} className="text-brown-400" />
-                  <span className="text-xl font-bold text-brown-800">
-                    {value}{suffix}
-                  </span>
+                  <span className="text-xl font-bold text-brown-800">{value}</span>
                 </div>
                 <span className="text-xs text-brown-400">{label}</span>
               </div>
@@ -257,40 +247,40 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ════════════════════════════════════════
-          CONTENT
-          ════════════════════════════════════════ */}
+      {/* ══ CONTENT ══ */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* Tabs — underline style */}
+        {/* ── Main tabs ── */}
         <div className="flex border-b border-cream-300 mb-7">
-          {tabs.map(({ key, label, count }) => (
+          {([
+            { key: 'listings' as MainTab, label: 'My Listings', count: myListings.length    },
+            { key: 'rented'   as MainTab, label: 'Rented',      count: totalRented          },
+            { key: 'reviews'  as MainTab, label: 'Reviews',     count: received.length      },
+          ] as { key: MainTab; label: string; count: number }[]).map(({ key, label, count }) => (
             <button
               key={key}
-              onClick={() => setTab(key)}
+              onClick={() => setMainTab(key)}
               className={`relative pb-3 px-1 mr-7 text-sm font-medium transition-colors ${
-                tab === key
-                  ? 'text-brown-800'
-                  : 'text-brown-400 hover:text-brown-600'
+                mainTab === key ? 'text-brown-800' : 'text-brown-400 hover:text-brown-600'
               }`}
             >
               {label}
-              {count !== undefined && count > 0 && (
+              {count > 0 && (
                 <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                  tab === key ? 'bg-brown-100 text-brown-700' : 'bg-cream-200 text-brown-400'
+                  mainTab === key ? 'bg-brown-100 text-brown-700' : 'bg-cream-200 text-brown-400'
                 }`}>
                   {count}
                 </span>
               )}
-              {tab === key && (
+              {mainTab === key && (
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brown-700 rounded-full" />
               )}
             </button>
           ))}
         </div>
 
-        {/* ── LISTINGS ── */}
-        {tab === 'listings' && (
+        {/* ════════════════ MY LISTINGS TAB ════════════════ */}
+        {mainTab === 'listings' && (
           listingsLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -299,7 +289,16 @@ export default function ProfilePage() {
             </div>
           ) : myListings.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {myListings.map(p => <ProductCard key={p.id} product={p} />)}
+              {myListings.map(p => (
+                <div key={p.id} className="relative">
+                  <ProductCard product={p} />
+                  {p.status === 'rented' && (
+                    <div className="absolute top-3 left-3 bg-brown-700 text-cream-100 text-[10px] font-bold px-2 py-0.5 rounded-full shadow">
+                      Rented Out
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           ) : (
             <EmptyState
@@ -312,8 +311,187 @@ export default function ProfilePage() {
           )
         )}
 
-        {/* ── REVIEWS ── */}
-        {tab === 'reviews' && (
+        {/* ════════════════ RENTED TAB ════════════════ */}
+        {mainTab === 'rented' && (
+          <div>
+            {/* Sub-tab pills */}
+            <div className="flex gap-2 mb-6">
+              {([
+                { key: 'renting'    as RentedSubTab, label: 'Renting',    count: myRentals.length       },
+                { key: 'rented-out' as RentedSubTab, label: 'Rented Out', count: rentedOutListings.length },
+              ] as { key: RentedSubTab; label: string; count: number }[]).map(({ key, label, count }) => (
+                <button
+                  key={key}
+                  onClick={() => setRentedSub(key)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                    rentedSub === key
+                      ? 'bg-brown-700 text-cream-100 border-brown-700 shadow-sm'
+                      : 'bg-white text-brown-500 border-cream-300 hover:border-brown-400 hover:text-brown-700'
+                  }`}
+                >
+                  {label}
+                  {count > 0 && (
+                    <span className={`ml-1.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+                      rentedSub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Renting (items I rent from others) ── */}
+            {rentedSub === 'renting' && (
+              rentalsLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
+                  ))}
+                </div>
+              ) : myRentals.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {myRentals.map(rental => {
+                    const thumb    = rental.images?.[0]?.url;
+                    const isActive = new Date(rental.rentalEndDate) >= new Date();
+                    return (
+                      <div
+                        key={rental._id}
+                        onClick={() => navigate(`/products/${rental.productId}`)}
+                        className="bg-white border border-cream-200 rounded-2xl p-4 flex gap-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                      >
+                        <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                          {thumb
+                            ? <img src={thumb} alt={rental.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            : <div className="w-full h-full flex items-center justify-center"><Package size={22} className="text-brown-300" /></div>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{rental.productName}</p>
+                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                              isActive
+                                ? 'bg-green-50 text-green-700 border border-green-200'
+                                : 'bg-cream-200 text-brown-500 border border-cream-300'
+                            }`}>
+                              {isActive ? 'Active' : 'Ended'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-brown-400 mb-2 flex items-center gap-1">
+                            <MapPin size={10} /> {locStr(rental.location)}
+                          </p>
+                          <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit mb-1.5">
+                            <Calendar size={10} className="text-brown-400 shrink-0" />
+                            {fmtDate(rental.rentalStartDate)} → {fmtDate(rental.rentalEndDate)}
+                          </div>
+                          <p className="text-xs text-brown-400">
+                            Owner: <span className="text-brown-600 font-medium">{rental.userId?.name || rental.userId?.username}</span>
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<ShoppingBag size={32} className="text-brown-300" />}
+                  title="Not renting anything yet"
+                  desc="Items you're renting from others will appear here once an owner confirms your request"
+                  cta="Browse items"
+                  onCta={() => navigate('/')}
+                />
+              )
+            )}
+
+            {/* ── Rented Out (my items currently rented to someone) ── */}
+            {rentedSub === 'rented-out' && (
+              listingsLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-40 animate-pulse" />
+                  ))}
+                </div>
+              ) : rentedOutListings.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {rentedOutListings.map(item => {
+                    const thumb    = item.images?.[0];
+                    const renter   = item.rentedUserId;
+                    const isActive = item.rentalEndDate ? new Date(item.rentalEndDate) >= new Date() : true;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => navigate(`/products/${item.id}`)}
+                        className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                      >
+                        <div className="flex gap-4 mb-3">
+                          <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                            {thumb
+                              ? <img src={typeof thumb === 'string' ? thumb : (thumb as { url: string }).url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                              : <div className="w-full h-full flex items-center justify-center"><Package size={22} className="text-brown-300" /></div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{item.title}</p>
+                              <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                isActive
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-cream-200 text-brown-500 border border-cream-300'
+                              }`}>
+                                {isActive ? 'Active' : 'Ended'}
+                              </span>
+                            </div>
+                            {item.rentalStartDate && item.rentalEndDate && (
+                              <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
+                                <Calendar size={10} className="text-brown-400 shrink-0" />
+                                {fmtDate(item.rentalStartDate)} → {fmtDate(item.rentalEndDate)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Renter info card */}
+                        {renter ? (
+                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2.5 flex items-center gap-3">
+                            <UserAvatar
+                              name={renter.name || renter.username}
+                              className="w-8 h-8 rounded-full shrink-0"
+                              textClassName="text-xs font-bold"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-brown-700 truncate">
+                                {renter.name || renter.username}
+                              </p>
+                              {renter.location && (
+                                <p className="text-[11px] text-brown-400 flex items-center gap-1 mt-0.5 truncate">
+                                  <MapPin size={9} /> {renter.location}
+                                </p>
+                              )}
+                            </div>
+                            <div className="ml-auto shrink-0">
+                              <CheckCircle2 size={16} className="text-green-500" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2.5">
+                            <p className="text-xs text-brown-400 italic">External renter (not on RentX)</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<Award size={32} className="text-brown-300" />}
+                  title="Nothing rented out yet"
+                  desc="When you mark one of your listings as rented, it'll appear here with the renter's details"
+                />
+              )
+            )}
+          </div>
+        )}
+
+        {/* ════════════════ REVIEWS TAB ════════════════ */}
+        {mainTab === 'reviews' && (
           received.length > 0 ? (
             <div className="space-y-4">
               {received.map(r => (
@@ -352,126 +530,11 @@ export default function ProfilePage() {
             />
           )
         )}
-
-        {/* ── PHOTOS / MEDIA LIBRARY ── */}
-        {tab === 'photos' && (
-          <div className="space-y-6">
-            {/* Upload zone */}
-            <div
-              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(Array.from(e.dataTransfer.files)); }}
-              onClick={() => fileRef.current?.click()}
-              className={`group relative border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-200 ${
-                dragOver
-                  ? 'border-brown-500 bg-brown-50 scale-[1.01]'
-                  : 'border-cream-400 hover:border-brown-400 hover:bg-cream-100 bg-white'
-              }`}
-            >
-              <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-colors ${
-                  dragOver ? 'bg-brown-100' : 'bg-cream-200 group-hover:bg-cream-300'
-                }`}>
-                  <CloudUpload size={28} className={dragOver ? 'text-brown-600' : 'text-brown-400'} />
-                </div>
-                <p className="font-semibold text-brown-700 mb-1">
-                  {dragOver ? 'Release to upload' : 'Drag & drop your product photos'}
-                </p>
-                <p className="text-brown-400 text-sm mb-4">or click anywhere in this area to browse</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-brown-300 bg-cream-200 px-3 py-1 rounded-full border border-cream-300">PNG</span>
-                  <span className="text-xs text-brown-300 bg-cream-200 px-3 py-1 rounded-full border border-cream-300">JPG</span>
-                  <span className="text-xs text-brown-300 bg-cream-200 px-3 py-1 rounded-full border border-cream-300">WEBP</span>
-                  <span className="text-xs text-brown-400">· Max 10 MB</span>
-                </div>
-              </div>
-
-              {/* API badge */}
-              <div className="absolute top-3 right-3 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full">
-                API coming soon
-              </div>
-            </div>
-
-            <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={e => { handleFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
-
-            {/* Quick-add demo button */}
-            <button
-              onClick={addSample}
-              className="w-full flex items-center justify-center gap-2 py-3 text-sm font-medium text-brown-600 hover:text-brown-800 bg-white hover:bg-cream-100 border border-cream-300 rounded-xl transition-colors"
-            >
-              <Plus size={15} /> Add sample photo (demo)
-            </button>
-
-            {/* Photo grid */}
-            {photos.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-brown-800">
-                    Media Library
-                    <span className="ml-2 text-sm font-normal text-brown-400">
-                      {photos.filter(p => p.status === 'done').length} of {photos.length} uploaded
-                    </span>
-                  </h3>
-                  <button className="text-xs font-medium text-brown-500 hover:text-brown-800 bg-cream-100 border border-cream-300 px-3 py-1.5 rounded-lg transition-colors">
-                    Save all to listing
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {photos.map(photo => (
-                    <div key={photo.id} className="group relative bg-white border border-cream-200 rounded-xl overflow-hidden shadow-soft">
-                      {/* Image */}
-                      <div className="relative aspect-square bg-cream-200">
-                        <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
-
-                        {/* Upload spinner */}
-                        {photo.status === 'uploading' && (
-                          <div className="absolute inset-0 bg-white/75 backdrop-blur-sm flex items-center justify-center">
-                            <div className="w-7 h-7 border-2 border-cream-300 border-t-brown-600 rounded-full animate-spin" />
-                          </div>
-                        )}
-
-                        {/* Hover overlay */}
-                        {photo.status === 'done' && (
-                          <div className="absolute inset-0 bg-brown-900/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-between p-2">
-                            <button
-                              onClick={() => setPhotos(p => p.filter(ph => ph.id !== photo.id))}
-                              className="w-7 h-7 bg-red-500 text-white rounded-lg flex items-center justify-center hover:bg-red-600 transition-colors"
-                            >
-                              <X size={13} />
-                            </button>
-                            <div className="w-7 h-7 bg-green-500 text-white rounded-lg flex items-center justify-center">
-                              <CheckCircle2 size={13} />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Caption */}
-                      <div className="px-2.5 py-2">
-                        <p className="text-xs text-brown-400 truncate mb-1.5">{photo.name}</p>
-                        <input
-                          value={photo.caption}
-                          onChange={e => setPhotos(p => p.map(ph => ph.id === photo.id ? { ...ph, caption: e.target.value } : ph))}
-                          placeholder="Caption…"
-                          className="w-full text-xs bg-cream-100 border border-cream-200 rounded-lg px-2.5 py-1.5 text-brown-700 placeholder-brown-300 focus:outline-none focus:ring-1 focus:ring-brown-300 transition-all"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* ════════════════════════════════════════
-          EDIT PROFILE MODAL
-          ════════════════════════════════════════ */}
+      {/* ══ EDIT PROFILE MODAL ══ */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Profile" maxWidth="max-w-lg">
         <div className="space-y-4">
-          {/* Avatar row */}
           <div className="flex items-center gap-4 pb-4 border-b border-cream-200">
             <div className="relative">
               <UserAvatar name={user.name} avatar={user.avatar} className="w-16 h-16 rounded-2xl object-cover ring-2 ring-cream-300" textClassName="text-2xl font-bold" />
@@ -504,28 +567,14 @@ export default function ProfilePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-brown-700 mb-1.5">
-              Bio
-              <span className="text-brown-400 font-normal ml-1">({editForm.bio.length}/160)</span>
-            </label>
-            <textarea
-              value={editForm.bio}
-              onChange={e => setEditForm(f => ({ ...f, bio: e.target.value.slice(0, 160) }))}
-              rows={3}
-              className="input-field resize-none"
-              placeholder="Tell renters a little about yourself…"
-            />
-          </div>
-
-            <div>
             <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
             <div className="relative">
-              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400 z-10" />
-              <LocationAutocomplete
+              <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brown-400" />
+              <input
                 value={editForm.location}
-                onChange={loc => setEditForm(f => ({ ...f, location: loc }))}
+                onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
                 className="input-field pl-9"
-                placeholder="Search your city…"
+                placeholder="City, State"
               />
             </div>
           </div>
@@ -536,20 +585,15 @@ export default function ProfilePage() {
           </div>
         </div>
       </Modal>
-
     </div>
   );
 }
 
-/* ─── Small reusable empty state ─── */
+/* ─── Empty state component ─── */
 function EmptyState({
   icon, title, desc, cta, onCta,
 }: {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-  cta?: string;
-  onCta?: () => void;
+  icon: React.ReactNode; title: string; desc: string; cta?: string; onCta?: () => void;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center bg-white border border-cream-200 rounded-2xl">
