@@ -136,24 +136,28 @@ export default function ForgotPasswordPage() {
 
           {step !== 'done' && (
             <>
-              <div className="flex items-start mb-8 max-w-xs mx-auto w-full">
-                {STEPS.map((s, i) => (
-                  <div key={s.key} className="flex items-start flex-1">
-                    <div className="flex flex-col items-center gap-1.5 shrink-0">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
-                        i < stepIdx   ? 'bg-brown-500 text-white' :
-                        i === stepIdx ? 'bg-brown-700 text-white' :
-                                        'bg-cream-300 text-brown-400'
-                      }`}>
-                        {i < stepIdx ? '✓' : i + 1}
+              <div className="mb-8 flex justify-center">
+                <div className="flex items-start justify-center gap-2 sm:gap-3">
+                  {STEPS.map((s, i) => (
+                    <div key={s.key} className="flex items-start">
+                      <div className="flex w-14 flex-col items-center gap-1.5">
+                        <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-700 transition-all ${
+                          i < stepIdx   ? 'bg-brown-300 text-brown-900' :
+                          i === stepIdx ? 'bg-brown-900 text-white' :
+                                          'bg-cream-300 text-brown-400'
+                        }`}>
+                          {i < stepIdx ? '✓' : i + 1}
+                        </div>
+                        <span className={`text-center text-[11px] font-800 ${i === stepIdx ? 'text-brown-900' : 'text-brown-400'}`}>
+                          {s.label}
+                        </span>
                       </div>
-                      <span className={`text-xs font-600 ${i === stepIdx ? 'text-brown-700' : 'text-brown-300'}`}>{s.label}</span>
+                      {i < STEPS.length - 1 && (
+                        <div className={`mx-1 mt-3.5 h-0.5 w-9 rounded-full transition-all sm:w-14 ${i < stepIdx ? 'bg-brown-300' : 'bg-cream-300'}`} />
+                      )}
                     </div>
-                    {i < STEPS.length - 1 && (
-                      <div className={`flex-1 h-0.5 mt-3.5 mx-2 rounded-full transition-all ${i < stepIdx ? 'bg-brown-400' : 'bg-cream-300'}`} />
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
               <div className="flex flex-col items-center text-center mb-8">
