@@ -19,6 +19,7 @@ interface FormData {
   category: Category | '';
   condition: Condition | '';
   price: string;
+  originalPrice: string;
   location: LocationData | null;
 }
 
@@ -41,7 +42,7 @@ export default function ListProductPage() {
 
   const [form, setForm] = useState<FormData>({
     title: '', description: '', category: '', condition: '',
-    price: '', location: user?.location ?? null,
+    price: '', originalPrice: '', location: user?.location ?? null,
   });
 
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -72,7 +73,8 @@ export default function ListProductPage() {
     if (!form.description.trim()) e.description = 'Description is required';
     if (!form.category)           e.category    = 'Select a category';
     if (!form.condition)          e.condition   = 'Select condition';
-    if (!form.price || isNaN(Number(form.price))) e.price = 'Enter a valid price';
+    if (!form.price || isNaN(Number(form.price))) e.price = 'Enter a valid rent price';
+    if (!form.originalPrice || isNaN(Number(form.originalPrice))) e.originalPrice = 'Enter a valid original price';
     if (!form.location)                e.location    = 'Location is required';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -91,6 +93,7 @@ export default function ListProductPage() {
       const formData = new FormData();
       formData.append('productName', form.title);
       formData.append('productPrice', form.price);
+      formData.append('productOriginalPrice', form.originalPrice);
       formData.append('description', form.description);
       formData.append('category', form.category);
       formData.append('condition', form.condition);
@@ -212,7 +215,19 @@ export default function ListProductPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-brown-700 mb-1.5">Price per day (₹)</label>
+                    <label className="block text-sm font-medium text-brown-700 mb-1.5">Original Price (₹)</label>
+                    <input
+                      type="number"
+                      value={form.originalPrice}
+                      onChange={e => set('originalPrice', e.target.value)}
+                      placeholder="e.g. 50000"
+                      min={0}
+                      className="input-field"
+                    />
+                    {errors.originalPrice && <p className="text-red-500 text-xs mt-1">{errors.originalPrice}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-brown-700 mb-1.5">Rent per day (₹)</label>
                     <input
                       type="number"
                       value={form.price}
@@ -223,7 +238,10 @@ export default function ListProductPage() {
                     />
                     {errors.price && <p className="text-red-500 text-xs mt-1">{errors.price}</p>}
                   </div>
-                  <div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
                     <label className="block text-sm font-medium text-brown-700 mb-1.5">Pickup Location</label>
                     <LocationAutocomplete
                       value={form.location}
@@ -369,7 +387,7 @@ export default function ListProductPage() {
                   variant="secondary"
                   onClick={() => {
                     setStep('details');
-                    setForm({ title: '', description: '', category: '', condition: '', price: '', location: user?.location ?? null });
+                    setForm({ title: '', description: '', category: '', condition: '', price: '', originalPrice: '', location: user?.location ?? null });
                     setErrors({});
                     imagePreviews.forEach(url => URL.revokeObjectURL(url));
                     setImageFiles([]);

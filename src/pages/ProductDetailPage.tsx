@@ -510,8 +510,7 @@ export default function ProductDetailPage() {
         </div>
 
         <ReviewSection
-          productId={product.id}
-          initialReviews={[]}
+          productId={product.mongoId ?? product.id}
           isOwner={isOwner}
         />
 

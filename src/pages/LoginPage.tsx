@@ -87,7 +87,12 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-5 text-center">
+            <div className="mt-5 space-y-2 text-center">
+              <p className="text-brown-400 text-sm">
+                <Link to="/forgot-password" className="text-brown-500 hover:text-brown-700 transition-colors">
+                  Forgot your password?
+                </Link>
+              </p>
               <p className="text-brown-400 text-sm">
                 New to RentX?{' '}
                 <Link to="/register" className="text-brown-700 font-semibold hover:text-brown-900 transition-colors">
