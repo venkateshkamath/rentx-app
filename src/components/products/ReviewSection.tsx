@@ -1,15 +1,26 @@
-import { useState } from 'react';
-import { Star, PenLine, CheckCircle2, Lock } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Star, PenLine, CheckCircle2, Lock, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import type { Review } from '../../types';
+import { api } from '../../lib/api';
 import Button from '../ui/Button';
+import UserAvatar from '../ui/UserAvatar';
+
+/* ─── Types ─── */
+interface ApiReview {
+  _id: string;
+  productId: string;
+  userId: { _id: string; username: string; name?: string; avatar?: string };
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
 
 interface ReviewSectionProps {
   productId: string;
-  initialReviews: Review[];
   isOwner?: boolean;
 }
 
+/* ─── Sub-components ─── */
 function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [hovered, setHovered] = useState(0);
   return (
@@ -33,18 +44,32 @@ function StarPicker({ value, onChange }: { value: number; onChange: (v: number) 
   );
 }
 
-function ReviewCard({ review }: { review: Review }) {
+function ReviewCard({
+  review,
+  canDelete,
+  onDelete,
+  deleting,
+}: {
+  review: ApiReview;
+  canDelete: boolean;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  const authorName = review.userId?.name || review.userId?.username || 'User';
+  const authorAvatar = review.userId?.avatar || '';
+
   return (
     <div className="bg-cream-50 border border-cream-200 rounded-2xl p-5">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
-          <img
-            src={review.authorAvatar}
-            alt={review.authorName}
+          <UserAvatar
+            name={authorName}
+            avatar={authorAvatar}
             className="w-10 h-10 rounded-xl object-cover ring-1 ring-cream-300"
+            textClassName="text-sm font-bold"
           />
           <div>
-            <p className="font-semibold text-brown-800 text-sm">{review.authorName}</p>
+            <p className="font-semibold text-brown-800 text-sm">{authorName}</p>
             <p className="text-brown-400 text-xs">
               {new Date(review.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
               {' · '}
@@ -52,27 +77,56 @@ function ReviewCard({ review }: { review: Review }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          {[1, 2, 3, 4, 5].map(n => (
-            <Star key={n} size={13} className={n <= review.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
-          ))}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-0.5">
+            {[1, 2, 3, 4, 5].map(n => (
+              <Star key={n} size={13} className={n <= review.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
+            ))}
+          </div>
+          {canDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              disabled={deleting}
+              className="ml-1 p-1.5 rounded-lg text-brown-300 hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40"
+              title="Delete your review"
+            >
+              {deleting
+                ? <div className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                : <Trash2 size={14} />}
+            </button>
+          )}
         </div>
       </div>
-      <h4 className="font-semibold text-brown-800 text-sm mb-1">{review.title}</h4>
-      <p className="text-brown-500 text-sm leading-relaxed">{review.body}</p>
+      <p className="text-brown-500 text-sm leading-relaxed">{review.comment}</p>
     </div>
   );
 }
 
-export default function ReviewSection({ productId, initialReviews, isOwner = false }: ReviewSectionProps) {
+/* ─── Main Component ─── */
+export default function ReviewSection({ productId, isOwner = false }: ReviewSectionProps) {
   const { isAuthenticated, user } = useAuth();
-  const [reviews, setReviews] = useState<Review[]>(initialReviews);
+  const [reviews, setReviews] = useState<ApiReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ rating: 0, title: '', body: '' });
-  const [errors, setErrors] = useState({ rating: '', title: '', body: '' });
+  const [form, setForm] = useState({ rating: 0, comment: '' });
+  const [errors, setErrors] = useState({ rating: '', comment: '' });
+  const [submitError, setSubmitError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  /* ── Fetch reviews from API ── */
+  const fetchReviews = useCallback(() => {
+    setReviewsLoading(true);
+    api.reviews.getProductReviews(productId)
+      .then(res => setReviews((res.data as ApiReview[]) ?? []))
+      .catch(() => setReviews([]))
+      .finally(() => setReviewsLoading(false));
+  }, [productId]);
+
+  useEffect(() => { fetchReviews(); }, [fetchReviews]);
+
+  /* ── Derived ── */
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
     : '—';
@@ -83,40 +137,55 @@ export default function ReviewSection({ productId, initialReviews, isOwner = fal
     pct: reviews.length ? Math.round((reviews.filter(r => r.rating === n).length / reviews.length) * 100) : 0,
   }));
 
-  const hasAlreadyReviewed = !!user && reviews.some(r => r.authorId === user.id);
+  const hasAlreadyReviewed = !!user && reviews.some(r => r.userId?._id === user.id);
   const canReview = isAuthenticated && !!user && !isOwner && !hasAlreadyReviewed && !submitted;
 
+  /* ── Validation ── */
   const validate = () => {
-    const e = { rating: '', title: '', body: '' };
+    const e = { rating: '', comment: '' };
     if (!form.rating) e.rating = 'Please select a rating';
-    if (!form.title.trim()) e.title = 'Add a short title';
-    if (form.body.trim().length < 20) e.body = 'Write at least 20 characters';
+    if (form.comment.trim().length < 20) e.comment = 'Write at least 20 characters';
     setErrors(e);
     return !Object.values(e).some(Boolean);
   };
 
+  /* ── Submit review via API ── */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canReview) return;
     if (!validate()) return;
     setLoading(true);
-    await new Promise(r => setTimeout(r, 700));
-    const newReview: Review = {
-      id: `r-new-${Date.now()}`,
-      authorId: user.id,
-      authorName: user.name,
-      authorAvatar: user.avatar,
-      productId,
-      rating: form.rating,
-      title: form.title,
-      body: form.body,
-      createdAt: new Date().toISOString().slice(0, 10),
-      transactionType: 'rent',
-    };
-    setReviews(prev => [newReview, ...prev]);
-    setLoading(false);
-    setSubmitted(true);
-    setShowForm(false);
+    setSubmitError('');
+    try {
+      await api.reviews.addReview(productId, {
+        rating: form.rating,
+        comment: form.comment.trim(),
+      });
+      setSubmitted(true);
+      setShowForm(false);
+      setForm({ rating: 0, comment: '' });
+      fetchReviews(); // Refresh list from server
+    } catch (err) {
+      setSubmitError((err as Error).message ?? 'Failed to post review. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ── Delete review ── */
+  const handleDelete = async (reviewId: string) => {
+    if (!confirm('Delete this review? This cannot be undone.')) return;
+    setDeletingId(reviewId);
+    try {
+      await api.reviews.deleteReview(reviewId);
+      fetchReviews(); // Refresh list from server
+      // If user deleted their own review, allow them to write a new one
+      setSubmitted(false);
+    } catch {
+      // silently fail
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -198,34 +267,25 @@ export default function ReviewSection({ productId, initialReviews, isOwner = fal
             {errors.rating && <p className="text-red-500 text-xs mt-1">{errors.rating}</p>}
           </div>
 
-          {/* Title */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-brown-700 mb-1.5">Review title</label>
-            <input
-              value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              placeholder="Summarise your experience in a line"
-              className="input-field"
-              maxLength={80}
-            />
-            {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
-          </div>
-
-          {/* Body */}
+          {/* Comment */}
           <div className="mb-5">
             <label className="block text-sm font-medium text-brown-700 mb-1.5">
-              Detailed review
-              <span className="text-brown-400 font-normal ml-1">({form.body.length} chars)</span>
+              Your review
+              <span className="text-brown-400 font-normal ml-1">({form.comment.length} chars)</span>
             </label>
             <textarea
-              value={form.body}
-              onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+              value={form.comment}
+              onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
               placeholder="Tell others about the item condition, the renter's responsiveness, pickup/drop-off experience…"
               rows={4}
               className="input-field resize-none"
             />
-            {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body}</p>}
+            {errors.comment && <p className="text-red-500 text-xs mt-1">{errors.comment}</p>}
           </div>
+
+          {submitError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600 mb-4">{submitError}</div>
+          )}
 
           <div className="flex gap-3">
             <Button type="submit" loading={loading} className="flex-1">Post Review</Button>
@@ -235,9 +295,23 @@ export default function ReviewSection({ productId, initialReviews, isOwner = fal
       )}
 
       {/* Review list */}
-      {reviews.length > 0 ? (
+      {reviewsLoading ? (
         <div className="space-y-4">
-          {reviews.map(r => <ReviewCard key={r.id} review={r} />)}
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="bg-white border border-cream-200 rounded-2xl h-28 animate-pulse" />
+          ))}
+        </div>
+      ) : reviews.length > 0 ? (
+        <div className="space-y-4">
+          {reviews.map(r => (
+            <ReviewCard
+              key={r._id}
+              review={r}
+              canDelete={!!user && r.userId?._id === user.id}
+              onDelete={() => handleDelete(r._id)}
+              deleting={deletingId === r._id}
+            />
+          ))}
         </div>
       ) : (
         <div className="text-center py-12 bg-white border border-cream-200 rounded-2xl">
