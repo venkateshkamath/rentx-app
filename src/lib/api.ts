@@ -62,6 +62,12 @@ export const api = {
 
     updateAvatar: (formData: FormData) =>
       request<{ success: boolean; avatar: string }>('/auth/avatar', { method: 'PATCH', body: formData }),
+
+    changePassword: (oldPassword: string, newPassword: string) =>
+      request<{ success: boolean; message: string }>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ oldPassword, newPassword }),
+      }),
   },
 
   chat: {
