@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-export type Theme = 'warm' | 'fresh';
+export type Theme = 'warm';
 
 interface ThemeContextType {
   theme: Theme;
@@ -10,16 +10,14 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem('rentx-theme') as Theme) ?? 'warm';
-  });
+  const [theme, setTheme] = useState<Theme>('warm');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('rentx-theme', theme);
+    localStorage.setItem('rentx-theme', 'warm');
   }, [theme]);
 
-  const toggleTheme = () => setTheme(t => t === 'warm' ? 'fresh' : 'warm');
+  const toggleTheme = () => setTheme('warm');
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>

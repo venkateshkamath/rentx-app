@@ -3,15 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   MapPin, Star, Package,
   Plus, Camera, Edit2, Lock, Eye, EyeOff,
-  Award, Calendar, ShoppingBag, CheckCircle2, ArrowUpRight, ArrowDownLeft,
+  Calendar, ShoppingBag, CheckCircle2, ArrowUpRight, ArrowDownLeft,
   MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ProductCard from '../components/products/ProductCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-
-import Badge from '../components/ui/Badge';
 import LocationAutocomplete from '../components/ui/LocationAutocomplete';
 
 import { api } from '../lib/api';
@@ -21,7 +19,6 @@ import UserAvatar from '../components/ui/UserAvatar';
 
 /* ─── Types ─── */
 type MainTab  = 'listings' | 'rented' | 'reviews' | 'history';
-type RentedSubTab = 'renting' | 'rented-out';
 type HistorySubTab = 'given-out' | 'taken';
 type ReviewSubTab = 'given' | 'received';
 
@@ -49,7 +46,6 @@ interface OwnedProduct extends Product {
   rentalEndDate?: string;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 interface HistoryRecord {
   _id: string;
   productId: { _id: string; productName: string; images: { url: string }[]; location?: { name?: string }; rentPrice?: number; userId?: { _id: string; username: string; name: string } };
@@ -68,15 +64,8 @@ interface UserReview {
   comment: string;
   createdAt: string;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ─── Helpers ─── */
-function locStr(loc: string | { name?: string } | undefined): string {
-  if (!loc) return '—';
-  if (typeof loc === 'string') return loc;
-  return loc.name ?? '—';
-}
-
 function fmtDate(iso?: string) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -114,7 +103,6 @@ export default function ProfilePage() {
   const [myListings,     setMyListings]     = useState<OwnedProduct[]>([]);
   const [listingsLoading, setListingsLoading] = useState(true);
   const [myRentals,      setMyRentals]      = useState<RentedProduct[]>([]);
-  const [rentalsLoading,  setRentalsLoading]  = useState(true);
 
   /* ── History data ── */
   const [historyRentedOut,  setHistoryRentedOut]  = useState<HistoryRecord[]>([]);
@@ -147,8 +135,7 @@ export default function ProfilePage() {
     // Rentals (items I'm renting from others)
     api.products.getMyRentals()
       .then(res => setMyRentals((res.data as RentedProduct[]) ?? []))
-      .catch(() => setMyRentals([]))
-      .finally(() => setRentalsLoading(false));
+      .catch(() => setMyRentals([]));
 
     // Rental history
     api.products.getRentalHistory()

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,18 +13,15 @@ import {
   Share2,
   ShieldCheck,
   Star,
-  ToggleLeft,
-  ToggleRight,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import Badge from '../components/ui/Badge';
-import StarRating from '../components/ui/StarRating';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import ProductCard from '../components/products/ProductCard';
 import ReviewSection from '../components/products/ReviewSection';
 import UserAvatar from '../components/ui/UserAvatar';
 import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+import RichTextEditor from '../components/ui/RichTextEditor';
 import type { Category, Condition, LocationData, Product } from '../types';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
@@ -61,6 +59,8 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
+  const [nameplateVisible, setNameplateVisible] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const [loginModal, setLoginModal] = useState(false);
   const [rentDays, setRentDays] = useState(1);
 
@@ -107,6 +107,16 @@ export default function ProductDetailPage() {
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    const scrollEl = document.querySelector('main');
+    const check = () => {
+      if (!titleRef.current) return;
+      setNameplateVisible(titleRef.current.getBoundingClientRect().bottom <= 64);
+    };
+    scrollEl?.addEventListener('scroll', check, { passive: true });
+    return () => scrollEl?.removeEventListener('scroll', check);
+  }, []);
 
   const isOwner = !!(user && product && user.id === product.ownerId);
 
@@ -306,223 +316,303 @@ export default function ProductDetailPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-brown-400 mb-4">Product not found.</p>
-          <Link to="/" className="text-brown-600 font-medium hover:underline">← Back to listings</Link>
+          <Link to="/search" className="text-brown-600 font-medium hover:underline">← Back to listings</Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-cream-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="min-h-screen bg-cream-100 text-brown-900">
 
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-brown-500 hover:text-brown-800 text-sm mb-6 transition-colors">
-          <ArrowLeft size={16} /> Back to listings
-        </button>
+      <section className="border-b border-cream-300 bg-cream-50">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+          <button
+            onClick={() => navigate('/search')}
+            className="mb-6 flex items-center gap-2 text-sm font-800 text-brown-500 transition-colors hover:text-brown-900"
+          >
+            <ArrowLeft size={16} /> Back to listings
+          </button>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
-
-          {/* Left: Images */}
-          <div className="lg:col-span-3 space-y-3">
-            <div className="group relative aspect-[4/3] overflow-hidden rounded-lg bg-cream-200 shadow-card">
-              <img
-                key={activeImage}
-                src={product.images[activeImage]?.url}
-                alt={product.images[activeImage]?.caption ?? product.title}
-                className="w-full h-full object-cover transition-opacity duration-300"
-              />
-              {product.images[activeImage]?.caption && (
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-brown-900/70 to-transparent px-5 py-4">
-                  <p className="text-cream-100 text-sm font-medium">{product.images[activeImage].caption}</p>
-                </div>
-              )}
-              {product.images.length > 1 && (
-                <>
-                  <button onClick={prevImage} className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-card transition-all hover:bg-white group-hover:opacity-100">
-                    <ChevronLeft size={18} className="text-brown-700" />
-                  </button>
-                  <button onClick={nextImage} className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-card transition-all hover:bg-white group-hover:opacity-100">
-                    <ChevronRight size={18} className="text-brown-700" />
-                  </button>
-                  <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
-                    {product.images.map((_, i) => (
-                      <button key={i} onClick={() => setActiveImage(i)} className={`rounded-full transition-all ${i === activeImage ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/60'}`} />
-                    ))}
-                  </div>
-                </>
-              )}
-              <div className="absolute top-3 right-3 flex gap-2">
-                <button
-                  onClick={handleShare}
-                  className="w-9 h-9 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-card text-brown-500 hover:text-brown-700 transition-all"
-                  aria-label="Share listing"
-                >
-                  <Share2 size={16} />
-                </button>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
+            <div>
+              <p className="text-xs font-800 uppercase tracking-[0.12em] text-accent">
+                {product.category} · {product.condition}
+              </p>
+              <h1 ref={titleRef} className="mt-2 max-w-3xl text-3xl font-900 leading-tight md:text-5xl">{product.title}</h1>
+              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-700 text-brown-500">
+                <span className="flex items-center gap-1.5">
+                  <MapPin size={15} className="text-brown-300" />
+                  {product.location?.name || 'Location not set'}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Star size={15} className="fill-brown-900 text-brown-900" />
+                  {product.rating.toFixed(1)} · {product.reviewCount} review{product.reviewCount === 1 ? '' : 's'}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Calendar size={15} className="text-brown-300" />
+                  Listed {new Date(product.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
               </div>
             </div>
 
+            <button
+              onClick={handleShare}
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-cream-300 bg-white px-4 text-sm font-800 text-brown-700 shadow-soft transition-colors hover:border-brown-900 hover:text-brown-900 lg:justify-self-end"
+            >
+              <Share2 size={16} />
+              Share listing
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="space-y-7">
+            <div className="group relative overflow-hidden rounded-xl border border-cream-300 bg-cream-200 shadow-soft">
+              <div className="aspect-[4/3]">
+                {product.images[activeImage]?.url ? (
+                  <img
+                    key={activeImage}
+                    src={product.images[activeImage]?.url}
+                    alt={product.images[activeImage]?.caption ?? product.title}
+                    className="h-full w-full object-cover transition-opacity duration-300"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm font-800 text-brown-300">RentX</div>
+                )}
+              </div>
+
+              {product.images[activeImage]?.caption && (
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-brown-900/70 to-transparent px-5 py-4">
+                  <p className="text-sm font-700 text-cream-50">{product.images[activeImage].caption}</p>
+                </div>
+              )}
+
+              {product.images.length > 1 && (
+                <>
+                  <button
+                    onClick={prevImage}
+                    className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg bg-white/95 text-brown-700 opacity-0 shadow-soft transition-all hover:bg-white group-hover:opacity-100"
+                    aria-label="Previous image"
+                  >
+                    <ChevronLeft size={19} />
+                  </button>
+                  <button
+                    onClick={nextImage}
+                    className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg bg-white/95 text-brown-700 opacity-0 shadow-soft transition-all hover:bg-white group-hover:opacity-100"
+                    aria-label="Next image"
+                  >
+                    <ChevronRight size={19} />
+                  </button>
+                </>
+              )}
+            </div>
+
             {product.images.length > 1 && (
-              <div className="flex gap-2.5">
+              <div className="grid grid-cols-5 gap-2">
                 {product.images.map((img, i) => (
-                  <button key={i} onClick={() => setActiveImage(i)} className={`h-16 w-20 overflow-hidden rounded-lg border-2 transition-all ${i === activeImage ? 'border-brown-500 shadow-soft' : 'border-transparent opacity-60 hover:opacity-100'}`}>
-                    <img src={img.url} alt={img.caption ?? `Image ${i + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    key={i}
+                    onClick={() => setActiveImage(i)}
+                    className={`aspect-[4/3] overflow-hidden rounded-lg border transition-all ${
+                      i === activeImage ? 'border-brown-900 opacity-100' : 'border-cream-300 opacity-70 hover:opacity-100'
+                    }`}
+                    aria-label={`Show image ${i + 1}`}
+                  >
+                    <img src={img.url} alt={img.caption ?? `Image ${i + 1}`} className="h-full w-full object-cover" />
                   </button>
                 ))}
               </div>
             )}
 
-            <div className="rounded-lg border border-cream-300 bg-white p-5 shadow-soft">
-              <h2 className="font-semibold text-brown-800 mb-3">About this item</h2>
-              <p className="text-brown-600 text-sm leading-relaxed">{product.description || 'No description provided.'}</p>
-            </div>
+            <section className="border-t border-cream-300 pt-7">
+              <h2 className="mb-3 text-sm font-900 uppercase tracking-[0.08em] text-brown-900">About this item</h2>
+              {product.description
+                ? <div
+                    className="max-w-3xl max-h-72 overflow-y-auto pr-2 text-[15px] leading-7 text-brown-500 rich-content"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description) }}
+                  />
+                : <p className="max-w-3xl text-[15px] leading-7 text-brown-500">No description provided.</p>
+              }
+            </section>
+
+            <section className="grid gap-3 border-t border-cream-300 pt-7 sm:grid-cols-3">
+              <div className="rounded-xl border border-cream-300 bg-cream-50 p-4">
+                <p className="text-[11px] font-800 uppercase tracking-[0.08em] text-brown-300">Condition</p>
+                <p className="mt-1 text-sm font-900 text-brown-900">{product.condition}</p>
+              </div>
+              <div className="rounded-xl border border-cream-300 bg-cream-50 p-4">
+                <p className="text-[11px] font-800 uppercase tracking-[0.08em] text-brown-300">Category</p>
+                <p className="mt-1 text-sm font-900 text-brown-900">{product.category}</p>
+              </div>
+              <div className="rounded-xl border border-cream-300 bg-cream-50 p-4">
+                <p className="text-[11px] font-800 uppercase tracking-[0.08em] text-brown-300">Item value</p>
+                <p className="mt-1 text-sm font-900 text-brown-900">
+                  {product.originalPrice > 0 ? `₹${product.originalPrice.toLocaleString('en-IN')}` : 'Not provided'}
+                </p>
+              </div>
+            </section>
+
+            <ReviewSection
+              productId={product.mongoId ?? product.id}
+              isOwner={isOwner}
+            />
           </div>
 
-          {/* Right: Details + CTA */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="rounded-lg border border-cream-300 bg-white p-5 shadow-card">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <Badge type={product.type} size="md" />
-                <span className="text-xs text-brown-400 bg-cream-100 px-2 py-0.5 rounded-full">{product.condition}</span>
+          <aside className="lg:sticky lg:top-24 lg:self-start">
+            <div className="rounded-xl border border-cream-300 bg-cream-50 p-5 shadow-card">
+              <div className={`overflow-hidden transition-all duration-300 ${nameplateVisible ? 'max-h-16 opacity-100 mb-4' : 'max-h-0 opacity-0 mb-0'}`}>
+                <p className="text-xs font-800 uppercase tracking-[0.08em] text-brown-300 mb-0.5">Listing</p>
+                <p className="truncate text-base font-900 text-brown-900 leading-tight">{product.title}</p>
               </div>
-
-              <h1 className="text-xl font-semibold text-brown-900 leading-snug mb-3">{product.title}</h1>
-
-              <div className="flex items-center gap-3 mb-4">
-                <StarRating rating={product.rating} reviewCount={product.reviewCount} />
-                <span className="text-brown-300">·</span>
-                <div className="flex items-center gap-1 text-brown-400 text-xs">
-                  <MapPin size={12} /> {product.location?.name || 'Location not set'}
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-800 uppercase tracking-[0.08em] text-brown-300">Daily rent</p>
+                  <div className="mt-1 flex items-baseline gap-1.5">
+                    <span className="text-4xl font-900 tracking-tight text-brown-900">₹{product.price.toLocaleString('en-IN')}</span>
+                    <span className="text-sm font-700 text-brown-400">/day</span>
+                  </div>
                 </div>
+                <span className={`rounded-md px-2.5 py-1 text-[11px] font-900 uppercase tracking-[0.08em] ${
+                  product.available ? 'bg-cream-200 text-brown-800' : 'bg-red-50 text-red-600'
+                }`}>
+                  {product.available ? 'Available' : 'Unavailable'}
+                </span>
               </div>
 
-              <div className="mb-4">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-bold text-brown-900">₹{product.price}</span>
-                  <span className="text-brown-400 text-sm">/day</span>
-                </div>
-                {product.originalPrice > 0 && (
-                  <p className="text-sm text-brown-400 mt-1">
-                    Worth ₹{product.originalPrice.toLocaleString('en-IN')}
-                  </p>
-                )}
-              </div>
-
-              {/* ── OWNER panel ── */}
               {isOwner ? (
                 <div className="space-y-3">
-                  <div className="rounded-xl bg-cream-50 border border-cream-300 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-brown-700">Availability</p>
-                        <p className={`text-xs mt-0.5 font-semibold ${product.available ? 'text-green-600' : 'text-red-500'}`}>
-                          {product.available ? 'Available for rent' : 'Currently rented out'}
-                        </p>
-                      </div>
+                  <div>
+                    <p className="text-[11px] font-800 uppercase tracking-[0.08em] text-brown-300 mb-2">Listing status</p>
+                    <div className="grid grid-cols-2 rounded-xl border border-cream-300 bg-cream-100 p-1 gap-1">
                       <button
-                        onClick={handleToggleStatus}
-                        disabled={statusLoading}
-                        className="flex items-center gap-1.5 text-sm font-medium text-brown-700 hover:text-brown-900 transition-colors disabled:opacity-50"
+                        onClick={() => !product.available && handleToggleStatus()}
+                        disabled={statusLoading || product.available}
+                        className={`relative py-2.5 rounded-lg text-xs font-900 transition-all duration-200 ${
+                          product.available
+                            ? 'bg-white text-brown-900 shadow-soft'
+                            : 'text-brown-400 hover:text-brown-600'
+                        }`}
                       >
-                        {statusLoading ? (
-                          <div className="w-5 h-5 border-2 border-brown-400 border-t-transparent rounded-full animate-spin" />
-                        ) : product.available ? (
-                          <ToggleRight size={28} className="text-green-500" />
-                        ) : (
-                          <ToggleLeft size={28} className="text-brown-300" />
+                        {statusLoading && product.available && (
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="h-3.5 w-3.5 rounded-full border-2 border-brown-300 border-t-brown-700 animate-spin" />
+                          </span>
                         )}
-                        {product.available ? 'Mark as Rented' : 'Mark Available'}
+                        <span className={statusLoading && product.available ? 'opacity-0' : ''}>Available</span>
+                      </button>
+                      <button
+                        onClick={() => product.available && handleToggleStatus()}
+                        disabled={statusLoading || !product.available}
+                        className={`relative py-2.5 rounded-lg text-xs font-900 transition-all duration-200 ${
+                          !product.available
+                            ? 'bg-white text-brown-900 shadow-soft'
+                            : 'text-brown-400 hover:text-brown-600'
+                        }`}
+                      >
+                        {statusLoading && !product.available && (
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="h-3.5 w-3.5 rounded-full border-2 border-brown-300 border-t-brown-700 animate-spin" />
+                          </span>
+                        )}
+                        <span className={statusLoading && !product.available ? 'opacity-0' : ''}>Rented out</span>
                       </button>
                     </div>
                   </div>
 
-                  <Button onClick={openEdit} variant="secondary" className="w-full">
-                    <Edit2 size={15} /> Edit Listing
+                  <Button onClick={openEdit} variant="secondary" className="w-full rounded-xl">
+                    <Edit2 size={15} /> Edit listing
                   </Button>
 
-                  <p className="text-xs text-brown-400 text-center">You own this listing</p>
+                  {/* <p className="text-center text-xs font-700 text-brown-400">You own this listing</p> */}
                 </div>
               ) : (
-                /* ── RENTER panel ── */
-                <>
-                  <div className="mt-3 rounded-lg bg-cream-100 p-3.5 mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-brown-500 font-medium">How many days?</span>
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-cream-300 bg-white p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-sm font-800 text-brown-700">Rental days</span>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setRentDays(d => Math.max(1, d - 1))} className="w-6 h-6 rounded-full bg-brown-200 text-brown-700 text-sm font-bold flex items-center justify-center hover:bg-brown-300">−</button>
-                        <span className="w-6 text-center text-sm font-semibold text-brown-800">{rentDays}</span>
-                        <button onClick={() => setRentDays(d => d + 1)} className="w-6 h-6 rounded-full bg-brown-200 text-brown-700 text-sm font-bold flex items-center justify-center hover:bg-brown-300">+</button>
+                        <button
+                          onClick={() => setRentDays(d => Math.max(1, d - 1))}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-cream-300 bg-cream-50 text-sm font-900 text-brown-900 transition-colors hover:border-brown-900"
+                        >
+                          -
+                        </button>
+                        <span className="w-8 text-center text-sm font-900 text-brown-900">{rentDays}</span>
+                        <button
+                          onClick={() => setRentDays(d => d + 1)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-cream-300 bg-cream-50 text-sm font-900 text-brown-900 transition-colors hover:border-brown-900"
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-brown-500">Total estimate</span>
-                      <span className="font-bold text-brown-800">₹{product.price * rentDays}</span>
+                    <div className="flex items-center justify-between border-t border-cream-300 pt-3 text-sm">
+                      <span className="font-700 text-brown-500">Estimated total</span>
+                      <span className="text-lg font-900 text-brown-900">₹{(product.price * rentDays).toLocaleString('en-IN')}</span>
                     </div>
                   </div>
 
-                  <Button onClick={handleStartRequest} className="w-full" size="lg" disabled={!product.available}>
+                  <Button onClick={handleStartRequest} className="w-full rounded-lg" size="lg" disabled={!product.available}>
                     <MessageCircle size={18} />
-                    {product.available ? 'Request Rental' : 'Currently Unavailable'}
+                    {product.available ? 'Request rental' : 'Currently unavailable'}
                   </Button>
 
-                  <div className="flex items-center justify-center gap-1.5 mt-3">
-                    <ShieldCheck size={13} className="text-green-500" />
-                    <span className="text-xs text-brown-400">Login required before owner chat</span>
+                  <div className="flex items-start gap-2 rounded-lg bg-cream-100 px-3 py-3">
+                    <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brown-400" />
+                    <span className="text-xs font-700 leading-5 text-brown-400">
+                      Sign in only when you are ready to message the owner.
+                    </span>
                   </div>
-                </>
+                </div>
               )}
-            </div>
 
-            <div className="rounded-lg border border-cream-300 bg-white p-4 shadow-soft">
-              <div className="flex items-center gap-2 mb-3">
-                <Clock size={15} className="text-brown-400" />
-                <span className="text-sm font-medium text-brown-700">Availability</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${product.available ? 'bg-green-400' : 'bg-red-400'}`} />
-                <span className={`text-sm font-medium ${product.available ? 'text-green-700' : 'text-red-600'}`}>
-                  {product.available ? 'Available now' : 'Currently unavailable'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 mt-2 text-brown-400 text-xs">
-                <Calendar size={12} />
-                <span>Listed on {new Date(product.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-              </div>
-            </div>
+              <div className="my-5 border-t border-cream-300" />
 
-            <div className="rounded-lg border border-cream-300 bg-white p-4 shadow-soft">
-              <h3 className="text-sm font-semibold text-brown-700 mb-3">Listed by</h3>
-              <div className="flex items-center gap-3">
-                <UserAvatar name={product.ownerName} avatar={product.ownerAvatar} className="w-12 h-12 rounded-full object-cover shadow-soft" />
-                <div className="flex-1">
-                  <p className="font-semibold text-brown-800 text-sm">
-                    {product.ownerName}
-                    {isOwner && <span className="ml-2 text-xs font-normal text-brown-400">(you)</span>}
-                  </p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <Star size={11} className="fill-amber-400 text-amber-400" />
-                    <span className="text-xs text-brown-500">{product.rating} · {product.reviewCount} reviews</span>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <UserAvatar name={product.ownerName} avatar={product.ownerAvatar} className="h-12 w-12 rounded-lg object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-900 text-brown-900">
+                      {product.ownerName}
+                      {isOwner && <span className="ml-1 text-xs font-700 text-brown-400">(you)</span>}
+                    </p>
+                    <p className="mt-0.5 text-xs font-700 text-brown-400">Listed by owner</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-lg border border-cream-300 bg-white p-3">
+                    <div className="mb-1 flex items-center gap-1.5 text-brown-300">
+                      <Clock size={14} />
+                      <span className="text-[10px] font-800 uppercase tracking-[0.08em]">Status</span>
+                    </div>
+                    <p className="font-900 text-brown-900">{product.available ? 'Available now' : 'Unavailable'}</p>
+                  </div>
+                  <div className="rounded-lg border border-cream-300 bg-white p-3">
+                    <div className="mb-1 flex items-center gap-1.5 text-brown-300">
+                      <Star size={14} />
+                      <span className="text-[10px] font-800 uppercase tracking-[0.08em]">Rating</span>
+                    </div>
+                    <p className="font-900 text-brown-900">{product.rating.toFixed(1)}</p>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </aside>
         </div>
 
-        <ReviewSection
-          productId={product.mongoId ?? product.id}
-          isOwner={isOwner}
-        />
-
         {related.length > 0 && (
-          <div className="mt-12">
-            <h2 className="text-lg font-semibold text-brown-800 mb-5">You might also like</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <section className="mt-12 border-t border-cream-300 pt-8">
+            <h2 className="mb-5 text-sm font-900 uppercase tracking-[0.08em] text-brown-900">You might also like</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {related.map(p => <ProductCard key={p.id} product={p} />)}
             </div>
-          </div>
+          </section>
         )}
-      </div>
+      </main>
 
       {/* ── Share toast ── */}
       {shareCopied && (
@@ -563,12 +653,10 @@ export default function ProductDetailPage() {
 
           <div>
             <label className="block text-sm font-medium text-brown-700 mb-1.5">Description</label>
-            <textarea
+            <RichTextEditor
               value={editForm.description}
-              onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
-              rows={3}
+              onChange={val => setEditForm(f => ({ ...f, description: val }))}
               placeholder="Describe your item…"
-              className="input-field resize-none"
             />
           </div>
 

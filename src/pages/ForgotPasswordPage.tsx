@@ -20,12 +20,12 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(60);
+  const [resetToken, setResetToken] = useState('');
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
     if (step === 'otp') {
-      setResendTimer(60);
       const interval = setInterval(() => {
         setResendTimer(t => (t > 0 ? t - 1 : 0));
       }, 1000);
@@ -62,6 +62,7 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     try {
       await api.auth.verifyEmail(email.trim());
+      setResendTimer(60);
       setStep('otp');
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (err) {
@@ -77,7 +78,9 @@ export default function ForgotPasswordPage() {
     if (otp.join('').length < 4) { setError('Enter the 4-digit OTP.'); return; }
     setLoading(true);
     try {
-      await api.auth.verifyOtp(email.trim(), otp.join(''));
+      const res = await api.auth.confirmOtp(email.trim(), otp.join(''), 'reset-password') as { resetToken?: string };
+      if (!res.resetToken) throw new Error('Reset session could not be created. Please request a new OTP.');
+      setResetToken(res.resetToken);
       setStep('password');
     } catch (err) {
       setError((err as Error).message ?? 'Invalid OTP. Please try again.');
@@ -89,6 +92,7 @@ export default function ForgotPasswordPage() {
   const handleResend = async () => {
     setError('');
     setOtp(['', '', '', '']);
+    setResetToken('');
     setResendTimer(60);
     try {
       await api.auth.verifyEmail(email.trim());
@@ -104,9 +108,10 @@ export default function ForgotPasswordPage() {
     if (!newPassword) { setError('New password is required.'); return; }
     if (newPassword.length < 6) { setError('Password must be at least 6 characters.'); return; }
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
+    if (!resetToken) { setError('Reset session expired. Please verify OTP again.'); setStep('otp'); return; }
     setLoading(true);
     try {
-      await api.auth.resetPassword(email.trim(), otp.join(''), newPassword);
+      await api.auth.resetPassword(email.trim(), resetToken, newPassword);
       setStep('done');
     } catch (err) {
       setError((err as Error).message ?? 'Failed to reset password. Please try again.');
@@ -115,29 +120,37 @@ export default function ForgotPasswordPage() {
     }
   };
 
-  const STEPS: Step[] = ['email', 'otp', 'password'];
-  const stepIdx = STEPS.indexOf(step);
+  const STEPS: { key: Step; label: string }[] = [
+    { key: 'email',    label: 'Email'    },
+    { key: 'otp',      label: 'Verify'   },
+    { key: 'password', label: 'Password' },
+  ];
+  const stepIdx = STEPS.findIndex(s => s.key === step);
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4 py-12 bg-cream-100">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-card-hover border border-cream-300 p-8">
+        <div className="bg-white rounded-2xl shadow-card-hover border border-cream-200 overflow-hidden">
+          <div className="h-1.5 bg-gradient-to-r from-brown-700 via-brown-500 to-accent" />
+          <div className="p-8">
 
           {step !== 'done' && (
             <>
-              {/* Progress indicator */}
-              <div className="flex items-center gap-2 mb-8">
+              <div className="flex items-start mb-8 max-w-xs mx-auto w-full">
                 {STEPS.map((s, i) => (
-                  <div key={s} className="flex items-center gap-2 flex-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
-                      step === s ? 'bg-brown-600 text-white' :
-                      stepIdx > i ? 'bg-brown-200 text-brown-600' :
-                      'bg-cream-300 text-brown-300'
-                    }`}>
-                      {stepIdx > i ? '✓' : i + 1}
+                  <div key={s.key} className="flex items-start flex-1">
+                    <div className="flex flex-col items-center gap-1.5 shrink-0">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
+                        i < stepIdx   ? 'bg-brown-500 text-white' :
+                        i === stepIdx ? 'bg-brown-700 text-white' :
+                                        'bg-cream-300 text-brown-400'
+                      }`}>
+                        {i < stepIdx ? '✓' : i + 1}
+                      </div>
+                      <span className={`text-xs font-600 ${i === stepIdx ? 'text-brown-700' : 'text-brown-300'}`}>{s.label}</span>
                     </div>
                     {i < STEPS.length - 1 && (
-                      <div className={`flex-1 h-0.5 rounded-full transition-all ${stepIdx > i ? 'bg-brown-300' : 'bg-cream-300'}`} />
+                      <div className={`flex-1 h-0.5 mt-3.5 mx-2 rounded-full transition-all ${i < stepIdx ? 'bg-brown-400' : 'bg-cream-300'}`} />
                     )}
                   </div>
                 ))}
@@ -308,6 +321,7 @@ export default function ForgotPasswordPage() {
             </div>
           )}
 
+        </div>
         </div>
       </div>
     </div>

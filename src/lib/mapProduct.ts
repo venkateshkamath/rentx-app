@@ -30,7 +30,7 @@ export function mapApiProduct(p: any): Product {
       return { placeId: '', name: typeof p.location === 'string' ? p.location : '', lat: 0, lng: 0 };
     })(),
     ownerId: (typeof p.userId === 'object' ? p.userId?._id : p.userId) ?? '',
-    ownerName: (typeof p.userId === 'object' ? (p.userId?.username || p.userId?.name) : (p.username || p.name)) ?? 'Unknown',
+    ownerName: (typeof p.userId === 'object' ? (p.userId?.name || p.userId?.username) : (p.name || p.username)) ?? 'Unknown',
     ownerAvatar: '',
     rating: typeof p.rating === 'number' ? p.rating : 0,
     reviewCount: typeof p.reviewCount === 'number' ? p.reviewCount : 0,

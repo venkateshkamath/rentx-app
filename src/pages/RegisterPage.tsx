@@ -136,14 +136,16 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4 py-12 bg-cream-100">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-card-hover border border-cream-300 p-8">
+      <div className={`w-full ${step === 'otp' ? 'max-w-2xl' : 'max-w-md'}`}>
+        <div className="bg-white rounded-2xl shadow-card-hover border border-cream-200 overflow-hidden">
+          <div className="h-1.5 bg-gradient-to-r from-brown-700 via-brown-500 to-accent" />
+          <div className={step === 'otp' ? 'px-8 py-10 sm:px-16' : 'p-8'}>
 
           {/* Progress indicator */}
-          <div className="flex items-center gap-2 mb-8">
+          <div className="mx-auto mb-8 flex max-w-md items-center gap-4">
             {(['details', 'otp', 'success'] as Step[]).map((s, i) => (
-              <div key={s} className="flex items-center gap-2 flex-1">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
+              <div key={s} className="flex flex-1 items-center gap-4">
+                <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
                   step === s ? 'bg-brown-600 text-white' :
                   ['details', 'otp', 'success'].indexOf(step) > i ? 'bg-brown-200 text-brown-600' :
                   'bg-cream-300 text-brown-300'
@@ -161,7 +163,7 @@ export default function RegisterPage() {
           {step === 'details' && (
             <>
               <div className="mb-6">
-                <h1 className="text-2xl font-semibold text-brown-900">Create account</h1>
+                <h1 className="text-2xl font-800 text-brown-900 tracking-tight">Create account</h1>
                 <p className="text-brown-400 text-sm mt-1">Join thousands renting on RentX</p>
               </div>
 
@@ -270,18 +272,18 @@ export default function RegisterPage() {
           {/* Step 2: OTP */}
           {step === 'otp' && (
             <>
-              <div className="mb-6 text-center">
-                <div className="inline-flex w-14 h-14 bg-brown-100 rounded-2xl items-center justify-center mb-4">
-                  <Mail size={24} className="text-brown-600" />
+              <div className="mx-auto mb-7 max-w-xl text-center">
+                <div className="mb-5 inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-brown-100">
+                  <Mail size={30} className="text-brown-700" />
                 </div>
-                <h1 className="text-2xl font-semibold text-brown-900">Verify your email</h1>
-                <p className="text-brown-400 text-sm mt-1">
+                <h1 className="text-3xl font-800 text-brown-900">Verify your email</h1>
+                <p className="mx-auto mt-2 max-w-lg text-brown-500 text-base leading-7">
                   Enter the 4-digit OTP sent to <span className="font-medium text-brown-600">{form.email}</span>
                 </p>
               </div>
 
-              <form onSubmit={handleOtpSubmit}>
-                <div className="flex gap-2.5 justify-center mb-6" onPaste={handleOtpPaste}>
+              <form onSubmit={handleOtpSubmit} className="mx-auto max-w-xl">
+                <div className="mb-7 flex justify-center gap-4" onPaste={handleOtpPaste}>
                   {otp.map((digit, i) => (
                     <input
                       key={i}
@@ -292,7 +294,7 @@ export default function RegisterPage() {
                       value={digit}
                       onChange={e => handleOtpChange(i, e.target.value)}
                       onKeyDown={e => handleOtpKeyDown(i, e)}
-                      className="w-12 h-14 text-center text-xl font-semibold bg-cream-100 border-2 border-brown-200 rounded-xl text-brown-900 focus:outline-none focus:border-brown-500 focus:bg-white transition-all"
+                      className="h-16 w-16 rounded-2xl border-2 border-brown-200 bg-cream-100 text-center text-2xl font-semibold text-brown-900 transition-all focus:border-brown-700 focus:bg-white focus:outline-none"
                     />
                   ))}
                 </div>
@@ -301,7 +303,7 @@ export default function RegisterPage() {
                   <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600 mb-4">{error}</div>
                 )}
 
-                <Button type="submit" loading={loading} className="w-full mb-4">
+                <Button type="submit" loading={loading} className="mb-5 w-full rounded-2xl" size="lg">
                   Verify OTP
                 </Button>
 
@@ -326,6 +328,7 @@ export default function RegisterPage() {
               <p className="text-brown-400 text-sm">Account created successfully. Redirecting to sign in…</p>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

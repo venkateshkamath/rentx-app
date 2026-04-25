@@ -71,7 +71,7 @@ export default function RentXLogo({ size = 'md', variant = 'full', onDark = fals
       {mark}
       <span
         className={`${wordSize} leading-none tracking-[-0.03em]`}
-        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+        style={{ fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif' }}
       >
         <span
           className={`font-[300] ${onDark ? 'text-cream-200' : 'text-brown-600'}`}

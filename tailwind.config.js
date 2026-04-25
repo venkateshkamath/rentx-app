@@ -4,41 +4,42 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Warm ivory backgrounds
+        // Editorial linen surfaces
         cream: {
-          50:  '#FEFEFB',
-          100: '#FAF7F2',
-          200: '#F2EAE0',
-          300: '#E6D8C8',
-          400: '#D4BEA8',
+          50:  '#FFFDF8',
+          100: '#F7F3EA',
+          200: '#ECE4D6',
+          300: '#DED3C0',
+          400: '#C9B89B',
         },
-        // Rich espresso browns
+        // Charcoal, clay and warm neutral scale
         brown: {
-          50:  '#F5EDE4',
-          100: '#EAD4BE',
-          200: '#C9A07A',
+          50:  '#F3EEE7',
+          100: '#E6D7C6',
+          200: '#C9A783',
           300: '#A87850',
-          400: '#8A5E38',
-          500: '#6E4522',
-          600: '#542E10',   // primary walnut
-          700: '#3A1F0A',   // deep espresso
-          800: '#2A1506',   // near-black espresso
-          900: '#190C02',
+          400: '#855534',
+          500: '#663C21',
+          600: '#4B2A17',
+          700: '#332014',
+          800: '#241914',
+          900: '#15120F',
         },
-        // Warm copper accent
-        accent: '#C47038',
+        // Clay accent
+        accent: '#A65F2B',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        card:       '0 2px 16px rgba(42, 21, 6, 0.07)',
-        'card-hover':'0 8px 40px rgba(42, 21, 6, 0.14)',
-        soft:       '0 1px 4px  rgba(42, 21, 6, 0.08)',
-        inner:      'inset 0 1px 3px rgba(42, 21, 6, 0.08)',
+        card:        '0 1px 3px rgba(17,26,21,0.06), 0 12px 30px rgba(17,26,21,0.08)',
+        'card-hover':'0 6px 12px rgba(17,26,21,0.06), 0 22px 60px rgba(17,26,21,0.16)',
+        soft:        '0 1px 5px rgba(17,26,21,0.08)',
+        inner:       'inset 0 1px 3px rgba(17,26,21,0.08)',
+        glow:        '0 0 0 3px rgba(166,95,43,0.18)',
       },
       backgroundImage: {
-        'profile-hero': 'linear-gradient(135deg, #190C02 0%, #3A1F0A 40%, #6E4522 80%, #8A5E38 100%)',
+        'profile-hero': 'linear-gradient(135deg, #15120F 0%, #332014 48%, #663C21 82%, #A65F2B 100%)',
       },
       keyframes: {
         'fade-in': {
@@ -53,6 +54,13 @@ export default {
       animation: {
         'fade-in': 'fade-in 0.2s ease-out',
         'slide-in': 'slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+      },
+      fontWeight: {
+        '500': '500',
+        '600': '600',
+        '700': '700',
+        '800': '800',
+        '900': '900',
       },
     },
   },

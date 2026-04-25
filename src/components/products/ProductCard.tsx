@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, MapPin, IndianRupee } from 'lucide-react';
+import { MapPin, Star } from 'lucide-react';
 import type { Product } from '../../types';
 import UserAvatar from '../ui/UserAvatar';
 
@@ -8,71 +8,89 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
+  const imageUrl = product.images[0]?.url;
+
   return (
     <Link
       to={`/products/${product.id}`}
-      className="group flex min-h-full flex-col overflow-hidden rounded-2xl border border-cream-300 bg-white shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover"
+      className="group flex min-h-full flex-col overflow-hidden rounded-xl border border-cream-300 bg-cream-50 transition-all duration-200 hover:border-brown-900 hover:shadow-card"
     >
-      {/* Image */}
-      <div className="relative overflow-hidden aspect-[4/3] bg-cream-200">
-        <img
-          src={product.images[0].url}
-          alt={product.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          loading="lazy"
-        />
-        {/* Top-left badges */}
-        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-          <span className="rounded-full bg-brown-800/80 backdrop-blur-sm px-2.5 py-0.5 text-[10px] font-bold text-cream-100 uppercase tracking-wide shadow-soft">
-            Rent
+      <div className="relative overflow-hidden bg-cream-200">
+        <div className="aspect-[4/3]">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={product.title}
+              className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-sm font-700 text-brown-300">
+              RentX
+            </div>
+          )}
+        </div>
+
+        {product.condition && (
+          <span className="absolute top-3 left-3 rounded-md bg-black/50 px-2.5 py-1 text-[10px] font-800 uppercase tracking-[0.08em] text-white backdrop-blur-sm">
+            {product.condition}
           </span>
-          {product.category && product.category !== 'Other' && (
-            <span className="rounded-full bg-white/85 backdrop-blur-sm px-2 py-0.5 text-[10px] font-semibold text-brown-600 shadow-soft">
-              {product.category}
-            </span>
-          )}
-        </div>
-        {/* Top-right condition */}
-        <span className="absolute top-2.5 right-2.5 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-brown-600 shadow-soft backdrop-blur-sm">
-          {product.condition}
-        </span>
-        {/* Bottom gradient overlay for price readability */}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
-        {/* Price overlay on image */}
-        <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between">
-          <div>
-            <span className="text-white font-bold text-lg drop-shadow-md">₹{product.price}</span>
-            <span className="text-white/80 text-[11px] ml-0.5">/day</span>
-          </div>
-          {product.originalPrice > 0 && (
-            <span className="text-white/75 text-[10px] font-medium drop-shadow-md">
-              Worth ₹{product.originalPrice.toLocaleString('en-IN')}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-3.5 flex flex-col flex-1">
-        <h3 className="mb-1 line-clamp-2 text-sm font-bold leading-snug text-brown-900 transition-colors group-hover:text-brown-700">
-          {product.title}
-        </h3>
-
-        {product.description && (
-          <p className="text-brown-400 text-[11px] leading-relaxed line-clamp-2 mb-2">{product.description}</p>
         )}
 
-        <div className="flex items-center gap-1 text-brown-400 text-[11px] mb-2">
-          <MapPin size={10} className="shrink-0" />
-          <span className="truncate">{product.location?.name || 'Unknown'}</span>
+        {!product.available && (
+          <span className="absolute bottom-3 left-3 rounded-md bg-white px-2.5 py-1 text-[10px] font-800 uppercase tracking-[0.08em] text-red-600">
+            Booked
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-1 flex-col p-4">
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <h3 className="line-clamp-2 text-[15px] font-900 leading-snug text-brown-900 transition-colors group-hover:text-accent">
+            {product.title}
+          </h3>
+          <div className="flex shrink-0 items-center gap-1 rounded-md bg-cream-200 px-2 py-1 text-[12px] font-800 text-brown-900">
+            <Star size={12} fill="currentColor" />
+            {product.rating.toFixed(1)}
+          </div>
         </div>
 
-        {/* Owner bar */}
-        <div className="mt-auto flex items-center gap-2 border-t border-cream-200 pt-2.5">
-          <UserAvatar name={product.ownerName} avatar={product.ownerAvatar} className="h-6 w-6 rounded-full object-cover" textClassName="text-[10px] font-bold" />
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-brown-500">{product.ownerName}</span>
-          <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-brown-700 opacity-0 transition-opacity group-hover:opacity-100">
-            View <ArrowRight size={11} />
+        {product.category && product.category !== 'Other' && (
+          <p className="mb-2 text-[11px] font-800 uppercase tracking-[0.08em] text-brown-300">
+            {product.category}
+          </p>
+        )}
+
+        <div className="mb-4 mt-auto flex items-center gap-1.5 text-[12px] font-600 text-brown-500">
+          <MapPin size={13} className="shrink-0 text-brown-300" />
+          <span className="truncate">{product.location?.name || '—'}</span>
+        </div>
+
+        <div className="mb-4 border-y border-cream-300 py-3">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-800 uppercase tracking-[0.08em] text-brown-300">Daily rent</p>
+              <p className="mt-0.5 text-lg font-900 text-brown-900">₹{product.price.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-800 uppercase tracking-[0.08em] text-brown-300">Value</p>
+              <p className="mt-0.5 text-sm font-800 text-brown-700">
+                {product.originalPrice > 0 ? `₹${product.originalPrice.toLocaleString('en-IN')}` : '—'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <UserAvatar
+            name={product.ownerName}
+            avatar={product.ownerAvatar}
+            className="h-7 w-7 shrink-0 rounded-full object-cover"
+            textClassName="text-[10px] font-bold"
+          />
+          <span className="flex-1 truncate text-[12px] font-700 text-brown-500">{product.ownerName}</span>
+          <span className="text-[11px] font-800 uppercase tracking-[0.08em] text-brown-300">
+            {product.reviewCount} reviews
           </span>
         </div>
       </div>
