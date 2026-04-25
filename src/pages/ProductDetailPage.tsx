@@ -37,8 +37,8 @@ interface EditForm {
   category: Category | '';
   condition: Condition | '';
   price: string;
+  originalPrice: string;
   location: LocationData | null;
-  tags: string;
 }
 
 interface ChatParticipant {
@@ -66,7 +66,7 @@ export default function ProductDetailPage() {
 
   // Owner edit state
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState<EditForm>({ title: '', description: '', category: '', condition: '', price: '', location: null, tags: '' });
+  const [editForm, setEditForm] = useState<EditForm>({ title: '', description: '', category: '', condition: '', price: '', originalPrice: '', location: null });
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
   const [statusLoading, setStatusLoading] = useState(false);
@@ -136,8 +136,8 @@ export default function ProductDetailPage() {
       category: product.category,
       condition: product.condition,
       price: String(product.price),
+      originalPrice: String(product.originalPrice || ''),
       location: product.location,
-      tags: product.tags.join(', '),
     });
     setEditError('');
     setEditOpen(true);
@@ -155,10 +155,10 @@ export default function ProductDetailPage() {
         productName: editForm.title,
         description: editForm.description,
         productPrice: Number(editForm.price),
+        productOriginalPrice: editForm.originalPrice ? Number(editForm.originalPrice) : undefined,
         category: editForm.category || undefined,
         condition: editForm.condition || undefined,
         location: editForm.location ? JSON.stringify(editForm.location) : undefined,
-        tags: editForm.tags,
       }) as { data: unknown };
       setProduct(mapApiProduct(res.data));
       setEditOpen(false);
@@ -375,13 +375,6 @@ export default function ProductDetailPage() {
             <div className="rounded-lg border border-cream-300 bg-white p-5 shadow-soft">
               <h2 className="font-semibold text-brown-800 mb-3">About this item</h2>
               <p className="text-brown-600 text-sm leading-relaxed">{product.description || 'No description provided.'}</p>
-              {product.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-4">
-                  {product.tags.map(tag => (
-                    <span key={tag} className="bg-cream-200 text-brown-500 text-xs px-2.5 py-1 rounded-full">#{tag}</span>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
 
@@ -403,9 +396,16 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <div className="flex items-baseline gap-1 mb-4">
-                <span className="text-3xl font-bold text-brown-900">₹{product.price}</span>
-                <span className="text-brown-400 text-sm">/day</span>
+              <div className="mb-4">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-bold text-brown-900">₹{product.price}</span>
+                  <span className="text-brown-400 text-sm">/day</span>
+                </div>
+                {product.originalPrice > 0 && (
+                  <p className="text-sm text-brown-400 mt-1">
+                    Worth ₹{product.originalPrice.toLocaleString('en-IN')}
+                  </p>
+                )}
               </div>
 
               {/* ── OWNER panel ── */}
@@ -591,7 +591,7 @@ export default function ProductDetailPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-brown-700 mb-1.5">Price per day (₹)</label>
+              <label className="block text-sm font-medium text-brown-700 mb-1.5">Rent per day (₹)</label>
               <input
                 type="number"
                 value={editForm.price}
@@ -601,22 +601,23 @@ export default function ProductDetailPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
-              <LocationAutocomplete
-                value={editForm.location}
-                onChange={loc => setEditForm(f => ({ ...f, location: loc }))}
-                placeholder="Search city…"
+              <label className="block text-sm font-medium text-brown-700 mb-1.5">Original Price (₹)</label>
+              <input
+                type="number"
+                value={editForm.originalPrice}
+                onChange={e => setEditForm(f => ({ ...f, originalPrice: e.target.value }))}
+                min={0}
                 className="input-field"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-brown-700 mb-1.5">Tags <span className="font-normal text-brown-400">(comma-separated)</span></label>
-            <input
-              value={editForm.tags}
-              onChange={e => setEditForm(f => ({ ...f, tags: e.target.value }))}
-              placeholder="camera, sony, mirrorless"
+            <label className="block text-sm font-medium text-brown-700 mb-1.5">Location</label>
+            <LocationAutocomplete
+              value={editForm.location}
+              onChange={loc => setEditForm(f => ({ ...f, location: loc }))}
+              placeholder="Search city…"
               className="input-field"
             />
           </div>

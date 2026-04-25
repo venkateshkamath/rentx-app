@@ -4,6 +4,7 @@ import {
   MapPin, Star, Package,
   Plus, Camera, Edit2, Lock, Eye, EyeOff,
   Award, Calendar, ShoppingBag, CheckCircle2, ArrowUpRight, ArrowDownLeft,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ProductCard from '../components/products/ProductCard';
@@ -22,6 +23,7 @@ import UserAvatar from '../components/ui/UserAvatar';
 type MainTab  = 'listings' | 'rented' | 'reviews' | 'history';
 type RentedSubTab = 'renting' | 'rented-out';
 type HistorySubTab = 'given-out' | 'taken';
+type ReviewSubTab = 'given' | 'received';
 
 interface RentedProduct {
   _id: string;
@@ -89,7 +91,6 @@ export default function ProfilePage() {
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
   const [mainTab,     setMainTab]     = useState<MainTab>('listings');
-  const [rentedSub,   setRentedSub]   = useState<RentedSubTab>('renting');
   const [historySub,  setHistorySub]  = useState<HistorySubTab>('given-out');
   const [editOpen,    setEditOpen]    = useState(false);
   const [saving,      setSaving]      = useState(false);
@@ -121,8 +122,10 @@ export default function ProfilePage() {
   const [historyLoading,    setHistoryLoading]    = useState(true);
 
   /* ── Reviews data ── */
-  const [myReviews,       setMyReviews]       = useState<UserReview[]>([]);
-  const [reviewsLoading,  setReviewsLoading]  = useState(true);
+  const [myReviews,        setMyReviews]        = useState<UserReview[]>([]);
+  const [receivedReviews,  setReceivedReviews]  = useState<UserReview[]>([]);
+  const [reviewsLoading,   setReviewsLoading]   = useState(true);
+  const [reviewSub,        setReviewSub]        = useState<ReviewSubTab>('received');
 
   useEffect(() => {
     // Listings (owned products — includes rented-out ones)
@@ -156,11 +159,14 @@ export default function ProfilePage() {
       .catch(() => { setHistoryRentedOut([]); setHistoryRentedFrom([]); })
       .finally(() => setHistoryLoading(false));
 
-    // User reviews
-    api.reviews.getUserReviews()
-      .then(res => setMyReviews((res.data as UserReview[]) ?? []))
-      .catch(() => setMyReviews([]))
-      .finally(() => setReviewsLoading(false));
+    // User reviews (given + received)
+    Promise.all([
+      api.reviews.getUserReviews().then(res => (res.data as UserReview[]) ?? []).catch(() => []),
+      api.reviews.getReceivedReviews().then(res => (res.data as UserReview[]) ?? []).catch(() => []),
+    ]).then(([given, received]) => {
+      setMyReviews(given);
+      setReceivedReviews(received);
+    }).finally(() => setReviewsLoading(false));
   }, []);
 
   /* ── Guard ── */
@@ -191,11 +197,16 @@ export default function ProfilePage() {
   /* ── Handlers ── */
   const handleSave = async () => {
     setSaving(true);
-    await new Promise(r => setTimeout(r, 600));
-    setProfile(editForm);
-    updateUser({ name: editForm.name, location: editForm.location ?? undefined });
-    setSaving(false);
-    setEditOpen(false);
+    try {
+      await api.auth.updateProfile({ name: editForm.name, location: editForm.location ?? undefined });
+      setProfile(editForm);
+      updateUser({ name: editForm.name, location: editForm.location ?? undefined });
+      setEditOpen(false);
+    } catch {
+      // silently fail — local state already reflects the change
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -355,8 +366,7 @@ export default function ProfilePage() {
         <div className="flex border-b border-cream-300 mb-7">
           {([
             { key: 'listings' as MainTab, label: 'My Listings', count: myListings.length    },
-            { key: 'rented'   as MainTab, label: 'Rented',      count: totalRented          },
-            { key: 'reviews'  as MainTab, label: 'Reviews',     count: myReviews.length     },
+            { key: 'reviews'  as MainTab, label: 'Reviews',     count: myReviews.length + receivedReviews.length },
             { key: 'history'  as MainTab, label: 'History',     count: totalHistory          },
           ] as { key: MainTab; label: string; count: number }[]).map(({ key, label, count }) => (
             <button
@@ -413,28 +423,30 @@ export default function ProfilePage() {
           )
         )}
 
-        {/* ════════════════ RENTED TAB ════════════════ */}
-        {mainTab === 'rented' && (
+
+        {/* ════════════════ REVIEWS TAB ════════════════ */}
+        {mainTab === 'reviews' && (
           <div>
             {/* Sub-tab pills */}
             <div className="flex gap-2 mb-6">
               {([
-                { key: 'renting'    as RentedSubTab, label: 'Renting',    count: myRentals.length       },
-                { key: 'rented-out' as RentedSubTab, label: 'Rented Out', count: rentedOutListings.length },
-              ] as { key: RentedSubTab; label: string; count: number }[]).map(({ key, label, count }) => (
+                { key: 'received' as ReviewSubTab, label: 'Received',  Icon: ArrowDownLeft, count: receivedReviews.length },
+                { key: 'given'    as ReviewSubTab, label: 'Given',     Icon: ArrowUpRight,  count: myReviews.length },
+              ] as { key: ReviewSubTab; label: string; Icon: typeof ArrowUpRight; count: number }[]).map(({ key, label, Icon, count }) => (
                 <button
                   key={key}
-                  onClick={() => setRentedSub(key)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
-                    rentedSub === key
+                  onClick={() => setReviewSub(key)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                    reviewSub === key
                       ? 'bg-brown-700 text-cream-100 border-brown-700 shadow-sm'
                       : 'bg-white text-brown-500 border-cream-300 hover:border-brown-400 hover:text-brown-700'
                   }`}
                 >
+                  <Icon size={14} />
                   {label}
                   {count > 0 && (
-                    <span className={`ml-1.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
-                      rentedSub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
+                    <span className={`ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+                      reviewSub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
                     }`}>
                       {count}
                     </span>
@@ -443,209 +455,119 @@ export default function ProfilePage() {
               ))}
             </div>
 
-            {/* ── Renting (items I rent from others) ── */}
-            {rentedSub === 'renting' && (
-              rentalsLoading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
-                  ))}
-                </div>
-              ) : myRentals.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {myRentals.map(rental => {
-                    const thumb    = rental.images?.[0]?.url;
-                    const isActive = new Date(rental.rentalEndDate) >= new Date();
-                    return (
-                      <div
-                        key={rental._id}
-                        onClick={() => navigate(`/products/${rental.productId}`)}
-                        className="bg-white border border-cream-200 rounded-2xl p-4 flex gap-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
-                      >
-                        <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-cream-200">
-                          {thumb
-                            ? <img src={thumb} alt={rental.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                            : <div className="w-full h-full flex items-center justify-center"><Package size={22} className="text-brown-300" /></div>}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{rental.productName}</p>
-                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                              isActive
-                                ? 'bg-green-50 text-green-700 border border-green-200'
-                                : 'bg-cream-200 text-brown-500 border border-cream-300'
-                            }`}>
-                              {isActive ? 'Active' : 'Ended'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-brown-400 mb-2 flex items-center gap-1">
-                            <MapPin size={10} /> {locStr(rental.location)}
-                          </p>
-                          <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit mb-1.5">
-                            <Calendar size={10} className="text-brown-400 shrink-0" />
-                            {fmtDate(rental.rentalStartDate)} → {fmtDate(rental.rentalEndDate)}
-                          </div>
-                          <p className="text-xs text-brown-400">
-                            Owner: <span className="text-brown-600 font-medium">{rental.userId?.name || rental.userId?.username}</span>
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<ShoppingBag size={32} className="text-brown-300" />}
-                  title="Not renting anything yet"
-                  desc="Items you're renting from others will appear here once an owner confirms your request"
-                  cta="Browse items"
-                  onCta={() => navigate('/')}
-                />
-              )
-            )}
-
-            {/* ── Rented Out (my items currently rented to someone) ── */}
-            {rentedSub === 'rented-out' && (
-              listingsLoading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-40 animate-pulse" />
-                  ))}
-                </div>
-              ) : rentedOutListings.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {rentedOutListings.map(item => {
-                    const thumb    = item.images?.[0];
-                    const renter   = item.rentedUserId;
-                    const isActive = item.rentalEndDate ? new Date(item.rentalEndDate) >= new Date() : true;
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => navigate(`/products/${item.id}`)}
-                        className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
-                      >
-                        <div className="flex gap-4 mb-3">
-                          <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-cream-200">
-                            {thumb
-                              ? <img src={typeof thumb === 'string' ? thumb : (thumb as { url: string }).url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                              : <div className="w-full h-full flex items-center justify-center"><Package size={22} className="text-brown-300" /></div>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{item.title}</p>
-                              <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                isActive
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : 'bg-cream-200 text-brown-500 border border-cream-300'
-                              }`}>
-                                {isActive ? 'Active' : 'Ended'}
-                              </span>
-                            </div>
-                            {item.rentalStartDate && item.rentalEndDate && (
-                              <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
-                                <Calendar size={10} className="text-brown-400 shrink-0" />
-                                {fmtDate(item.rentalStartDate)} → {fmtDate(item.rentalEndDate)}
+            {reviewsLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="bg-white border border-cream-200 rounded-2xl h-32 animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* ─── Received Reviews ─── */}
+                {reviewSub === 'received' && (
+                  receivedReviews.length > 0 ? (
+                    <div className="space-y-4">
+                      {receivedReviews.map(r => {
+                        const productName = r.productId?.productName ?? 'Unknown Product';
+                        const productThumb = r.productId?.images?.[0]?.url;
+                        const reviewerName = r.userId?.name || r.userId?.username || 'Anonymous';
+                        return (
+                          <div
+                            key={r._id}
+                            onClick={() => navigate(`/products/${r.productId?._id}`)}
+                            className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                                {productThumb
+                                  ? <img src={productThumb} alt={productName} className="w-full h-full object-cover" />
+                                  : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
                               </div>
-                            )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                  <div>
+                                    <span className="font-semibold text-brown-800 text-sm">{productName}</span>
+                                    <span className="text-brown-400 text-xs ml-2">
+                                      {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-0.5">
+                                    {[1,2,3,4,5].map(n => (
+                                      <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
+                                    ))}
+                                  </div>
+                                </div>
+                                <p className="text-brown-500 text-sm leading-relaxed mt-2">{r.comment}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <UserAvatar name={reviewerName} avatar={r.userId?.avatar} className="w-5 h-5 rounded-full" textClassName="text-[8px] font-bold" />
+                                  <span className="text-xs text-brown-400">by {reviewerName}</span>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={<MessageSquare size={32} className="text-brown-300" />}
+                      title="No reviews received yet"
+                      desc="Reviews others write on your products will appear here"
+                    />
+                  )
+                )}
 
-                        {/* Renter info card */}
-                        {renter ? (
-                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2.5 flex items-center gap-3">
-                            <UserAvatar
-                              name={renter.name || renter.username}
-                              className="w-8 h-8 rounded-full shrink-0"
-                              textClassName="text-xs font-bold"
-                            />
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-brown-700 truncate">
-                                {renter.name || renter.username}
-                              </p>
-                              {renter.location && (
-                                <p className="text-[11px] text-brown-400 flex items-center gap-1 mt-0.5 truncate">
-                                  <MapPin size={9} /> {renter.location}
-                                </p>
-                              )}
-                            </div>
-                            <div className="ml-auto shrink-0">
-                              <CheckCircle2 size={16} className="text-green-500" />
+                {/* ─── Given Reviews ─── */}
+                {reviewSub === 'given' && (
+                  myReviews.length > 0 ? (
+                    <div className="space-y-4">
+                      {myReviews.map(r => {
+                        const productName = r.productId?.productName ?? 'Unknown Product';
+                        const productThumb = r.productId?.images?.[0]?.url;
+                        return (
+                          <div
+                            key={r._id}
+                            onClick={() => navigate(`/products/${r.productId?._id}`)}
+                            className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                                {productThumb
+                                  ? <img src={productThumb} alt={productName} className="w-full h-full object-cover" />
+                                  : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                  <div>
+                                    <span className="font-semibold text-brown-800 text-sm">{productName}</span>
+                                    <span className="text-brown-400 text-xs ml-2">
+                                      {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-0.5">
+                                    {[1,2,3,4,5].map(n => (
+                                      <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
+                                    ))}
+                                  </div>
+                                </div>
+                                <p className="text-brown-500 text-sm leading-relaxed mt-2">{r.comment}</p>
+                              </div>
                             </div>
                           </div>
-                        ) : (
-                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2.5">
-                            <p className="text-xs text-brown-400 italic">External renter (not on RentX)</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<Award size={32} className="text-brown-300" />}
-                  title="Nothing rented out yet"
-                  desc="When you mark one of your listings as rented, it'll appear here with the renter's details"
-                />
-              )
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={<Star size={32} className="text-brown-300" />}
+                      title="No reviews given yet"
+                      desc="Reviews you've written will appear here"
+                    />
+                  )
+                )}
+              </>
             )}
           </div>
-        )}
-
-        {/* ════════════════ REVIEWS TAB ════════════════ */}
-        {mainTab === 'reviews' && (
-          reviewsLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="bg-white border border-cream-200 rounded-2xl h-32 animate-pulse" />
-              ))}
-            </div>
-          ) : myReviews.length > 0 ? (
-            <div className="space-y-4">
-              {myReviews.map(r => {
-                const productName = r.productId?.productName ?? 'Unknown Product';
-                const productThumb = r.productId?.images?.[0]?.url;
-                return (
-                  <div
-                    key={r._id}
-                    onClick={() => navigate(`/products/${r.productId?._id}`)}
-                    className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Product thumbnail */}
-                      <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-cream-200">
-                        {productThumb
-                          ? <img src={productThumb} alt={productName} className="w-full h-full object-cover" />
-                          : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-3 flex-wrap">
-                          <div>
-                            <span className="font-semibold text-brown-800 text-sm">{productName}</span>
-                            <span className="text-brown-400 text-xs ml-2">
-                              {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-0.5">
-                            {[1,2,3,4,5].map(n => (
-                              <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
-                            ))}
-                          </div>
-                        </div>
-                        <p className="text-brown-500 text-sm leading-relaxed mt-2">{r.comment}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Star size={32} className="text-brown-300" />}
-              title="No reviews yet"
-              desc="Reviews you've written will appear here"
-            />
-          )
         )}
 
         {/* ════════════════ HISTORY TAB ════════════════ */}

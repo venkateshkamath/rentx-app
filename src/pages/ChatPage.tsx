@@ -16,6 +16,7 @@ interface ChatMessage {
   id: string;
   senderId: string;
   content: string;
+  isSystem?: boolean;
   imageUrl?: string;
   imageName?: string;
   timestamp: string;
@@ -198,7 +199,8 @@ export default function ChatPage() {
       productId?: string;
       participants?: Array<{ _id: string; username: string }>;
       messages: Array<{
-        sender: { _id: string };
+        sender?: { _id: string };
+        isSystem?: boolean;
         content: string;
         imageUrl?: string;
         imageName?: string;
@@ -228,7 +230,8 @@ export default function ChatPage() {
         productId: data.productId ?? productIdParamRef.current ?? '',
         messages: data.messages.map((m, i) => ({
           id: `${i}-${m.timestamp}`,
-          senderId: m.sender._id,
+          senderId: m.sender?._id ?? 'system',
+          isSystem: m.isSystem,
           content: m.content,
           imageUrl: m.imageUrl,
           imageName: m.imageName,
@@ -262,7 +265,8 @@ export default function ChatPage() {
     const onReceiveMessage = (data: {
       chatId: string;
       message: {
-        sender: { _id: string };
+        sender?: { _id: string };
+        isSystem?: boolean;
         content: string;
         imageUrl?: string;
         imageName?: string;
@@ -275,7 +279,8 @@ export default function ChatPage() {
           ...prev,
           messages: [...prev.messages, {
             id: `${Date.now()}-${Math.random()}`,
-            senderId: data.message.sender._id,
+            senderId: data.message.sender?._id ?? 'system',
+            isSystem: data.message.isSystem,
             content: data.message.content,
             imageUrl: data.message.imageUrl,
             imageName: data.message.imageName,
@@ -288,7 +293,8 @@ export default function ChatPage() {
     const onChatNotification = (data: {
       chatId: string;
       message: {
-        sender: { _id: string };
+        sender?: { _id: string };
+        isSystem?: boolean;
         content: string;
         imageUrl?: string;
         timestamp: string;
@@ -296,7 +302,7 @@ export default function ChatPage() {
     }) => {
       const uid = userRef.current?.id ?? '';
       const senderId = data.message?.sender?._id;
-      const fromOther = String(senderId ?? '') !== String(uid ?? '');
+      const fromOther = data.message.isSystem || (String(senderId ?? '') !== String(uid ?? ''));
       const cid = String(data.chatId);
 
       if (fromOther && !sameChatId(cid, activeChatIdRef.current)) {
@@ -852,6 +858,19 @@ export default function ChatPage() {
                 )}
 
                 {activeChat.messages.map(msg => {
+                  if (msg.isSystem) {
+                    return (
+                      <div key={msg.id} className="flex justify-center my-3">
+                        <div className="bg-brown-50 border border-brown-200 rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm max-w-[85%] text-center">
+                          <Bot size={13} className="text-brown-500 shrink-0" />
+                          <p className="text-[11px] font-medium text-brown-700 leading-snug break-words">
+                            {msg.content}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const isMine = msg.senderId === user?.id;
                   const meta   = chatList.find(c => c.chatId === activeChat.chatId);
                   return (

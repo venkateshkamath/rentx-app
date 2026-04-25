@@ -54,8 +54,8 @@ export const api = {
     confirmOtp: (email: string, otp: string) =>
       request('/auth/confirm-otp', { method: 'POST', body: JSON.stringify({ email, otp }) }),
 
-    forgotPassword: (email: string) =>
-      request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+    verifyOtp: (email: string, otp: string) =>
+      request('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, otp }) }),
 
     resetPassword: (email: string, otp: string, newPassword: string) =>
       request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, otp, newPassword }) }),
@@ -67,6 +67,12 @@ export const api = {
       request<{ success: boolean; message: string }>('/auth/change-password', {
         method: 'POST',
         body: JSON.stringify({ oldPassword, newPassword }),
+      }),
+
+    updateProfile: (body: { name?: string; location?: unknown }) =>
+      request<{ success: boolean; data: unknown }>('/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
       }),
   },
 
@@ -112,6 +118,9 @@ export const api = {
     getUserReviews: () =>
       request<{ success: boolean; count: number; data: unknown[] }>('/reviews/user'),
 
+    getReceivedReviews: () =>
+      request<{ success: boolean; count: number; data: unknown[] }>('/reviews/received'),
+
     getProductReviews: (productId: string) =>
       request<{ success: boolean; count: number; averageRating: number; data: unknown[] }>(`/reviews/${productId}`),
 
@@ -123,5 +132,8 @@ export const api = {
 
     deleteReview: (reviewId: string) =>
       request<{ success: boolean }>(`/reviews/${reviewId}`, { method: 'DELETE' }),
+
+    checkCanReview: (productId: string) =>
+      request<{ success: boolean; canReview: boolean }>(`/reviews/${productId}/can-review`),
   },
 };

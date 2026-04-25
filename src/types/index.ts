@@ -20,7 +20,8 @@ export interface Product {
   title: string;
   description: string;
   images: ProductImage[];
-  price: number;         // per day for rent, estimated value for exchange
+  price: number;         // rent price per day
+  originalPrice: number; // product original value
   category: Category;
   condition: Condition;
   type: ListingType;

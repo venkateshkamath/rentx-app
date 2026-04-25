@@ -31,7 +31,6 @@ const STEPS: { key: Step; label: string }[] = [
 
 export default function ListProductPage() {
   const { isAuthenticated, user } = useAuth();
-  console.log(user)
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,7 +99,6 @@ export default function ListProductPage() {
       formData.append('location', JSON.stringify(form.location));
       formData.append('email', user.email);
       imageFiles.forEach(file => formData.append('images', file));
-      console.log(Object.fromEntries(formData));
       await api.products.create(formData);
       setStep('done');
     } catch (err) {
@@ -346,7 +344,12 @@ export default function ListProductPage() {
                   <h3 className="font-semibold text-brown-900 mb-1">{form.title || 'Untitled listing'}</h3>
                   <p className="text-brown-500 text-sm line-clamp-2 mb-3">{form.description}</p>
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-brown-800 text-lg">₹{form.price || '0'}<span className="text-xs font-normal text-brown-400">/day</span></span>
+                    <div>
+                      <span className="font-bold text-brown-800 text-lg">₹{form.price || '0'}<span className="text-xs font-normal text-brown-400">/day</span></span>
+                      {form.originalPrice && (
+                        <span className="text-xs text-brown-400 ml-2">Worth ₹{Number(form.originalPrice).toLocaleString('en-IN')}</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <UserAvatar name={user?.name ?? ''} avatar={user?.avatar} className="w-5 h-5 rounded-full" textClassName="text-[9px] font-bold" />
                       <span className="text-xs text-brown-400">{user?.name}</span>
