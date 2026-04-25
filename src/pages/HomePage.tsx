@@ -17,7 +17,7 @@ export default function HomePage() {
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
   const [selectedConditions, setSelectedConditions] = useState<Condition[]>([]);
   const [selectedCityPlaceId, setSelectedCityPlaceId] = useState('all');
-  const [maxPrice, setMaxPrice] = useState(2000);
+  const [maxPrice, setMaxPrice] = useState(Infinity);
   const [sortBy, setSortBy] = useState<'relevance' | 'price-asc' | 'price-desc' | 'rating'>('relevance');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -35,6 +35,14 @@ export default function HomePage() {
         setApiLoaded(true);
       });
   }, []);
+
+  // Step is fixed at 50 so the slider always lands exactly on the max value
+  const PRICE_STEP = 50;
+  const priceSliderMax = useMemo(() => {
+    if (products.length === 0) return 5000;
+    const max = Math.max(...products.map(p => p.price));
+    return Math.ceil(max / PRICE_STEP) * PRICE_STEP;
+  }, [products]);
 
   // Derive unique cities from products
   const cities = useMemo(() => {
@@ -59,7 +67,7 @@ export default function HomePage() {
     setSelectedCategories([]);
     setSelectedConditions([]);
     setSelectedCityPlaceId('all');
-    setMaxPrice(2000);
+    setMaxPrice(Infinity);
     setQuery('');
   };
 
@@ -67,7 +75,7 @@ export default function HomePage() {
     selectedCategories.length > 0 ||
     selectedConditions.length > 0 ||
     selectedCityPlaceId !== 'all' ||
-    maxPrice < 2000 ||
+    maxPrice < priceSliderMax ||
     !!query.trim();
 
   const filtered = useMemo(() => {
@@ -84,7 +92,7 @@ export default function HomePage() {
     if (selectedCategories.length > 0) list = list.filter(product => selectedCategories.includes(product.category));
     if (selectedConditions.length > 0) list = list.filter(product => selectedConditions.includes(product.condition));
     if (selectedCityPlaceId !== 'all') list = list.filter(product => product.location?.placeId === selectedCityPlaceId);
-    list = list.filter(product => product.price <= maxPrice);
+    if (maxPrice !== Infinity) list = list.filter(product => product.price <= maxPrice);
 
     if (sortBy === 'price-asc') list.sort((a, b) => a.price - b.price);
     if (sortBy === 'price-desc') list.sort((a, b) => b.price - a.price);
@@ -155,16 +163,21 @@ export default function HomePage() {
         <input
           type="range"
           min={0}
-          max={2000}
-          step={50}
-          value={maxPrice}
-          onChange={event => setMaxPrice(Number(event.target.value))}
+          max={priceSliderMax}
+          step={PRICE_STEP}
+          value={maxPrice === Infinity ? priceSliderMax : maxPrice}
+          onChange={event => {
+            const val = Number(event.target.value);
+            setMaxPrice(val >= priceSliderMax ? Infinity : val);
+          }}
           className="w-full accent-brown-600"
         />
         <div className="mt-1 flex justify-between text-xs text-brown-400">
           <span>₹0</span>
-          <span className="font-medium text-brown-700">₹{maxPrice}</span>
-          <span>₹2000</span>
+          <span className="font-medium text-brown-700">
+            {maxPrice === Infinity ? 'Any' : `₹${maxPrice}`}
+          </span>
+          <span>₹{priceSliderMax.toLocaleString()}</span>
         </div>
       </div>
 

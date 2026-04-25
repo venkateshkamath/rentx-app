@@ -1,24 +1,23 @@
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  MapPin, Star, Package, X,
+  MapPin, Star, Package,
   Plus, Camera, Edit2,
-  Award, Calendar, ShoppingBag, CheckCircle2,
+  Award, Calendar, ShoppingBag, CheckCircle2, ArrowUpRight, ArrowDownLeft,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { mockReviews } from '../data/mockReviews';
 import ProductCard from '../components/products/ProductCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-import Badge from '../components/ui/Badge';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
 import type { Product } from '../types';
 import UserAvatar from '../components/ui/UserAvatar';
 
 /* ─── Types ─── */
-type MainTab  = 'listings' | 'rented' | 'reviews';
+type MainTab  = 'listings' | 'rented' | 'reviews' | 'history';
 type RentedSubTab = 'renting' | 'rented-out';
+type HistorySubTab = 'given-out' | 'taken';
 
 interface RentedProduct {
   _id: string;
@@ -44,6 +43,27 @@ interface OwnedProduct extends Product {
   rentalEndDate?: string;
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+interface HistoryRecord {
+  _id: string;
+  productId: { _id: string; productName: string; images: { url: string }[]; location?: { name?: string }; rentPrice?: number; userId?: { _id: string; username: string; name: string } };
+  rentedByUserId: { _id: string; username: string; name: string } | null;
+  isExternalRenter: boolean;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+}
+
+interface UserReview {
+  _id: string;
+  productId: { _id: string; productName: string; images?: { url: string }[] };
+  userId: { _id: string; username: string; name: string; avatar?: string };
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /* ─── Helpers ─── */
 function locStr(loc: string | { name?: string } | undefined): string {
   if (!loc) return '—';
@@ -66,6 +86,7 @@ export default function ProfilePage() {
 
   const [mainTab,     setMainTab]     = useState<MainTab>('listings');
   const [rentedSub,   setRentedSub]   = useState<RentedSubTab>('renting');
+  const [historySub,  setHistorySub]  = useState<HistorySubTab>('given-out');
   const [editOpen,    setEditOpen]    = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [avatarError, setAvatarError] = useState('');
@@ -80,7 +101,14 @@ export default function ProfilePage() {
   const [myRentals,      setMyRentals]      = useState<RentedProduct[]>([]);
   const [rentalsLoading,  setRentalsLoading]  = useState(true);
 
-  const received = mockReviews.slice(0, 4);
+  /* ── History data ── */
+  const [historyRentedOut,  setHistoryRentedOut]  = useState<HistoryRecord[]>([]);
+  const [historyRentedFrom, setHistoryRentedFrom] = useState<HistoryRecord[]>([]);
+  const [historyLoading,    setHistoryLoading]    = useState(true);
+
+  /* ── Reviews data ── */
+  const [myReviews,       setMyReviews]       = useState<UserReview[]>([]);
+  const [reviewsLoading,  setReviewsLoading]  = useState(true);
 
   useEffect(() => {
     // Listings (owned products — includes rented-out ones)
@@ -104,6 +132,21 @@ export default function ProfilePage() {
       .then(res => setMyRentals((res.data as RentedProduct[]) ?? []))
       .catch(() => setMyRentals([]))
       .finally(() => setRentalsLoading(false));
+
+    // Rental history
+    api.products.getRentalHistory()
+      .then(res => {
+        setHistoryRentedOut((res.data.rentedOut as HistoryRecord[]) ?? []);
+        setHistoryRentedFrom((res.data.rentedFrom as HistoryRecord[]) ?? []);
+      })
+      .catch(() => { setHistoryRentedOut([]); setHistoryRentedFrom([]); })
+      .finally(() => setHistoryLoading(false));
+
+    // User reviews
+    api.reviews.getUserReviews()
+      .then(res => setMyReviews((res.data as UserReview[]) ?? []))
+      .catch(() => setMyReviews([]))
+      .finally(() => setReviewsLoading(false));
   }, []);
 
   /* ── Guard ── */
@@ -126,6 +169,7 @@ export default function ProfilePage() {
   const availableListings = myListings.filter(p => p.status === 'available');
   const rentedOutListings = myListings.filter(p => p.status === 'rented');
   const totalRented       = myRentals.length + rentedOutListings.length;
+  const totalHistory      = historyRentedOut.length + historyRentedFrom.length;
 
   const memberSince = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
@@ -255,7 +299,8 @@ export default function ProfilePage() {
           {([
             { key: 'listings' as MainTab, label: 'My Listings', count: myListings.length    },
             { key: 'rented'   as MainTab, label: 'Rented',      count: totalRented          },
-            { key: 'reviews'  as MainTab, label: 'Reviews',     count: received.length      },
+            { key: 'reviews'  as MainTab, label: 'Reviews',     count: myReviews.length     },
+            { key: 'history'  as MainTab, label: 'History',     count: totalHistory          },
           ] as { key: MainTab; label: string; count: number }[]).map(({ key, label, count }) => (
             <button
               key={key}
@@ -492,43 +537,223 @@ export default function ProfilePage() {
 
         {/* ════════════════ REVIEWS TAB ════════════════ */}
         {mainTab === 'reviews' && (
-          received.length > 0 ? (
+          reviewsLoading ? (
             <div className="space-y-4">
-              {received.map(r => (
-                <div key={r.id} className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft">
-                  <div className="flex items-start gap-3">
-                    <img src={r.authorAvatar} alt={r.authorName} className="w-10 h-10 rounded-xl object-cover shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div>
-                          <span className="font-semibold text-brown-800 text-sm">{r.authorName}</span>
-                          <span className="text-brown-400 text-xs ml-2">
-                            {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex gap-0.5">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-white border border-cream-200 rounded-2xl h-32 animate-pulse" />
+              ))}
+            </div>
+          ) : myReviews.length > 0 ? (
+            <div className="space-y-4">
+              {myReviews.map(r => {
+                const productName = r.productId?.productName ?? 'Unknown Product';
+                const productThumb = r.productId?.images?.[0]?.url;
+                return (
+                  <div
+                    key={r._id}
+                    onClick={() => navigate(`/products/${r.productId?._id}`)}
+                    className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Product thumbnail */}
+                      <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                        {productThumb
+                          ? <img src={productThumb} alt={productName} className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div>
+                            <span className="font-semibold text-brown-800 text-sm">{productName}</span>
+                            <span className="text-brown-400 text-xs ml-2">
+                              {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-0.5">
                             {[1,2,3,4,5].map(n => (
                               <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
                             ))}
                           </div>
-                          <Badge type={r.transactionType} size="sm" />
                         </div>
+                        <p className="text-brown-500 text-sm leading-relaxed mt-2">{r.comment}</p>
                       </div>
-                      <p className="font-semibold text-brown-800 text-sm mt-2 mb-1">{r.title}</p>
-                      <p className="text-brown-500 text-sm leading-relaxed">{r.body}</p>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <EmptyState
               icon={<Star size={32} className="text-brown-300" />}
               title="No reviews yet"
-              desc="Reviews from renters will appear here"
+              desc="Reviews you've written will appear here"
             />
           )
+        )}
+
+        {/* ════════════════ HISTORY TAB ════════════════ */}
+        {mainTab === 'history' && (
+          <div>
+            {/* Sub-tab pills */}
+            <div className="flex gap-2 mb-6">
+              {([
+                { key: 'given-out' as HistorySubTab, label: 'Given Out',    Icon: ArrowUpRight,  count: historyRentedOut.length   },
+                { key: 'taken'     as HistorySubTab, label: 'Taken',        Icon: ArrowDownLeft, count: historyRentedFrom.length  },
+              ] as { key: HistorySubTab; label: string; Icon: typeof ArrowUpRight; count: number }[]).map(({ key, label, Icon, count }) => (
+                <button
+                  key={key}
+                  onClick={() => setHistorySub(key)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                    historySub === key
+                      ? 'bg-brown-700 text-cream-100 border-brown-700 shadow-sm'
+                      : 'bg-white text-brown-500 border-cream-300 hover:border-brown-400 hover:text-brown-700'
+                  }`}
+                >
+                  <Icon size={14} />
+                  {label}
+                  {count > 0 && (
+                    <span className={`ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+                      historySub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Given Out — items the user listed that were rented by others */}
+            {historySub === 'given-out' && (
+              historyLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
+                  ))}
+                </div>
+              ) : historyRentedOut.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {historyRentedOut.map(h => {
+                    const prod  = h.productId;
+                    const thumb = prod?.images?.[0]?.url;
+                    const renter = h.rentedByUserId;
+                    const ended = new Date(h.endDate) < new Date();
+                    return (
+                      <div
+                        key={h._id}
+                        onClick={() => prod?._id && navigate(`/products/${prod._id}`)}
+                        className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                      >
+                        <div className="flex gap-4 mb-3">
+                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                            {thumb
+                              ? <img src={thumb} alt={prod?.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                              : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{prod?.productName ?? 'Untitled'}</p>
+                              <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                ended
+                                  ? 'bg-cream-200 text-brown-500 border border-cream-300'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}>
+                                {ended ? 'Completed' : 'Active'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
+                              <Calendar size={10} className="text-brown-400 shrink-0" />
+                              {fmtDate(h.startDate)} → {fmtDate(h.endDate)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2">
+                          {renter ? (
+                            <p className="text-xs text-brown-500">
+                              Rented by: <span className="text-brown-700 font-semibold">{renter.name || renter.username}</span>
+                            </p>
+                          ) : (
+                            <p className="text-xs text-brown-400 italic">{h.isExternalRenter ? 'External renter (not on RentX)' : 'Unknown renter'}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<ArrowUpRight size={32} className="text-brown-300" />}
+                  title="No items given out yet"
+                  desc="When someone rents one of your items, it'll show up here"
+                />
+              )
+            )}
+
+            {/* Taken — items the user rented from others */}
+            {historySub === 'taken' && (
+              historyLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
+                  ))}
+                </div>
+              ) : historyRentedFrom.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {historyRentedFrom.map(h => {
+                    const prod  = h.productId;
+                    const thumb = prod?.images?.[0]?.url;
+                    const owner = prod?.userId;
+                    const ended = new Date(h.endDate) < new Date();
+                    return (
+                      <div
+                        key={h._id}
+                        onClick={() => prod?._id && navigate(`/products/${prod._id}`)}
+                        className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
+                      >
+                        <div className="flex gap-4 mb-3">
+                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-cream-200">
+                            {thumb
+                              ? <img src={thumb} alt={prod?.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                              : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{prod?.productName ?? 'Untitled'}</p>
+                              <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                ended
+                                  ? 'bg-cream-200 text-brown-500 border border-cream-300'
+                                  : 'bg-green-50 text-green-700 border border-green-200'
+                              }`}>
+                                {ended ? 'Completed' : 'Active'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
+                              <Calendar size={10} className="text-brown-400 shrink-0" />
+                              {fmtDate(h.startDate)} → {fmtDate(h.endDate)}
+                            </div>
+                          </div>
+                        </div>
+                        {owner && (
+                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2">
+                            <p className="text-xs text-brown-500">
+                              Owner: <span className="text-brown-700 font-semibold">{owner.name || owner.username}</span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<ArrowDownLeft size={32} className="text-brown-300" />}
+                  title="No items rented yet"
+                  desc="Items you've rented from others will appear here"
+                  cta="Browse items"
+                  onCta={() => navigate('/')}
+                />
+              )
+            )}
+          </div>
         )}
       </div>
 

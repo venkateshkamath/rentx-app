@@ -10,6 +10,7 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import ChatPage from './pages/ChatPage';
 import ListProductPage from './pages/ListProductPage';
 import ProfilePage from './pages/ProfilePage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 
 function NotFound() {
   return (
@@ -49,6 +50,7 @@ function AppShell() {
           <Route path="/chat"         element={<ChatPage />} />
           <Route path="/list-product" element={<ListProductPage />} />
           <Route path="/profile"      element={<ProfilePage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="*"             element={<NotFound />} />
         </Routes>
       </main>
