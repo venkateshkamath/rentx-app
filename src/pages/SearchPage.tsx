@@ -33,7 +33,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     let active = true;
-    api.products.getAll()
+    api.products.getAll({ userId: currentUserId })
       .then(res => {
         if (!active) return;
         const mapped = (res.data as unknown[]).map(mapApiProduct);
@@ -51,7 +51,7 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentUserId]);
 
   const priceSliderMax = useMemo(() => {
     if (products.length === 0) return 5000;
@@ -110,7 +110,7 @@ export default function SearchPage() {
   };
 
   const filtered = useMemo(() => {
-    let list = currentUserId ? products.filter(product => product.ownerId !== currentUserId) : [...products];
+    let list = [...products];
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter(product =>
@@ -130,7 +130,7 @@ export default function SearchPage() {
     if (sortBy === 'rating') list.sort((a, b) => b.rating - a.rating);
 
     return list;
-  }, [maxPrice, query, selectedCategories, selectedCityPlaceId, selectedConditions, sortBy, products, currentUserId]);
+  }, [maxPrice, query, selectedCategories, selectedCityPlaceId, selectedConditions, sortBy, products]);
 
   const renderFilterSidebar = () => (
     <aside className="w-full space-y-6">

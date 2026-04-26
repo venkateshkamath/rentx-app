@@ -96,7 +96,7 @@ export default function ProductDetailPage() {
     });
     Promise.all([
       api.products.getById(id),
-      api.products.getAll().catch(() => ({ data: [] as unknown[] })),
+      api.products.getAll({ userId: currentUserId }).catch(() => ({ data: [] as unknown[] })),
     ])
       .then(([productRes, allRes]) => {
         if (!active) return;
@@ -104,7 +104,7 @@ export default function ProductDetailPage() {
         setProduct(mapped);
         const relatedProducts = (allRes.data as unknown[])
           .map(mapApiProduct)
-          .filter(p => p.id !== mapped.id && p.category === mapped.category && (!currentUserId || p.ownerId !== currentUserId))
+          .filter(p => p.id !== mapped.id && p.category === mapped.category)
           .slice(0, 3);
         setRelated(relatedProducts);
       })

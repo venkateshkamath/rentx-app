@@ -13,6 +13,10 @@ interface RequestOptions {
   cacheTtlMs?: number;
 }
 
+interface ProductListParams {
+  userId?: string;
+}
+
 const responseCache = new Map<string, CacheEntry>();
 const inFlightRequests = new Map<string, Promise<unknown>>();
 let cacheEpoch = 0;
@@ -100,6 +104,12 @@ async function request<T = unknown>(
   return fetchPromise;
 }
 
+function withQuery(path: string, params?: ProductListParams): string {
+  if (!params?.userId) return path;
+  const search = new URLSearchParams({ userId: params.userId });
+  return `${path}?${search.toString()}`;
+}
+
 export const api = {
   auth: {
     login: (email: string, password: string) =>
@@ -171,7 +181,8 @@ export const api = {
   },
 
   products: {
-    getAll: () => request<{ success: boolean; data: unknown[] }>("/products", {}, { cacheTtlMs: DEFAULT_CACHE_TTL_MS }),
+    getAll: (params?: ProductListParams) =>
+      request<{ success: boolean; data: unknown[] }>(withQuery("/products", params), {}, { cacheTtlMs: DEFAULT_CACHE_TTL_MS }),
     getById: (id: string) =>
       request<{ success: boolean; data: unknown }>(`/products/${id}`, {}, { cacheTtlMs: DEFAULT_CACHE_TTL_MS }),
     getUserProducts: () =>

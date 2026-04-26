@@ -24,7 +24,7 @@ export default function HomePage() {
 
   useEffect(() => {
     let active = true;
-    api.products.getAll()
+    api.products.getAll({ userId: currentUserId })
       .then(res => {
         if (active) setProducts((res.data as unknown[]).map(mapApiProduct));
       })
@@ -38,10 +38,9 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentUserId]);
 
-  const visibleProducts = currentUserId ? products.filter(product => product.ownerId !== currentUserId) : products;
-  const featured = visibleProducts[0];
+  const featured = products[0];
 
   return (
     <div className="min-h-screen overflow-hidden bg-cream-100 text-brown-900">
@@ -73,7 +72,7 @@ export default function HomePage() {
 
             <div className="mt-8 grid max-w-xl grid-cols-3 gap-3">
               {[
-                { icon: PackageCheck, label: 'Listings', value: apiLoaded ? `${visibleProducts.length}+` : '' },
+                { icon: PackageCheck, label: 'Listings', value: apiLoaded ? `${products.length}+` : '' },
                 { icon: ShieldCheck, label: 'Safer flow', value: 'Chat first' },
                 { icon: MapPin, label: 'Pickup', value: 'Nearby' },
               ].map(({ icon: Icon, label, value }) => (
