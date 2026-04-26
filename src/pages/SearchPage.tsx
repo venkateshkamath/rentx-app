@@ -33,7 +33,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     let active = true;
-    api.products.getAll()
+    api.products.getAll({ userId: currentUserId })
       .then(res => {
         if (!active) return;
         const mapped = (res.data as unknown[]).map(mapApiProduct);
@@ -51,7 +51,7 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentUserId]);
 
   const priceSliderMax = useMemo(() => {
     if (products.length === 0) return 5000;
@@ -110,7 +110,7 @@ export default function SearchPage() {
   };
 
   const filtered = useMemo(() => {
-    let list = currentUserId ? products.filter(product => product.ownerId !== currentUserId) : [...products];
+    let list = [...products];
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter(product =>
@@ -130,7 +130,7 @@ export default function SearchPage() {
     if (sortBy === 'rating') list.sort((a, b) => b.rating - a.rating);
 
     return list;
-  }, [maxPrice, query, selectedCategories, selectedCityPlaceId, selectedConditions, sortBy, products, currentUserId]);
+  }, [maxPrice, query, selectedCategories, selectedCityPlaceId, selectedConditions, sortBy, products]);
 
   const renderFilterSidebar = () => (
     <aside className="w-full space-y-6">
@@ -353,7 +353,7 @@ export default function SearchPage() {
 
         <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
           <div className="hidden lg:block">
-            <div className="sticky top-24 border-r border-cream-300 pr-5">
+            <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto border-r border-cream-300 pr-5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-sm font-900 uppercase tracking-[0.08em] text-brown-900">Filters</h2>
                 {activeFilterCount > 0 && (

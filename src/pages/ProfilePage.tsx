@@ -87,8 +87,6 @@ export default function ProfilePage() {
 
   const [mainTab,     setMainTab]     = useState<MainTab>('listings');
 
-  const [rentedSub,   setRentedSub]   = useState<RentedSubTab>('renting');
-
   const [historySub,  setHistorySub]  = useState<HistorySubTab>('given-out');
   const [editOpen,    setEditOpen]    = useState(false);
   const [saving,      setSaving]      = useState(false);
@@ -279,85 +277,108 @@ export default function ProfilePage() {
     <div className="bg-cream-100 min-h-full">
       <input ref={avatarFileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
 
-      {/* ══ HERO ══ */}
+      {/* ══ BANNER ══ */}
       <div
-        className="relative overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #190C02 0%, #3A1F0A 45%, #6E4522 85%, #8A5E38 100%)' }}
+        className="relative h-36 sm:h-44 overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #190C02 0%, #3A1F0A 45%, #6E4522 82%, #8A5E38 100%)' }}
       >
         <div
           className="absolute inset-0 opacity-[0.06]"
           style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.75\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")' }}
         />
-        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-12 pb-20 text-center">
-          {/* Avatar */}
-          <div className="relative inline-block mb-4">
-            <div className="w-24 h-24 rounded-2xl overflow-hidden ring-4 ring-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-              <UserAvatar name={user.name} avatar={user.avatar} className="w-full h-full object-cover" textClassName="text-4xl font-bold" />
+        <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-white/[0.04] border border-white/[0.06]" />
+        <div className="absolute right-24 bottom-0 w-40 h-40 rounded-full bg-white/[0.03]" />
+      </div>
+
+      {/* ══ PROFILE CARD ══ */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6">
+        <div className="bg-white border border-cream-200 rounded-2xl shadow-card-hover -mt-8 sm:-mt-10 relative z-10 px-6 pt-0 pb-6">
+
+          {/* Avatar row — overlaps top of card */}
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-10 sm:-mt-12 mb-5">
+            <div className="relative self-center sm:self-auto shrink-0">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden ring-4 ring-white shadow-[0_4px_24px_rgba(0,0,0,0.18)]">
+                <UserAvatar name={user.name} avatar={user.avatar} className="w-full h-full object-cover" textClassName="text-4xl font-bold" />
+              </div>
+              <button
+                type="button"
+                onClick={() => !avatarUploading && avatarFileRef.current?.click()}
+                disabled={avatarUploading}
+                className="absolute -bottom-1.5 -right-1.5 w-7 h-7 bg-white rounded-xl border border-cream-200 flex items-center justify-center shadow hover:bg-cream-100 transition-colors disabled:opacity-60"
+                title="Change photo"
+              >
+                {avatarUploading
+                  ? <div className="w-3 h-3 border-2 border-brown-400 border-t-transparent rounded-full animate-spin" />
+                  : <Camera size={13} className="text-brown-600" />}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => !avatarUploading && avatarFileRef.current?.click()}
-              disabled={avatarUploading}
-              className="absolute -bottom-1.5 -right-1.5 w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-card hover:bg-cream-100 transition-colors disabled:opacity-60"
-              title="Change avatar"
-            >
-              {avatarUploading
-                ? <div className="w-4 h-4 border-2 border-brown-400 border-t-transparent rounded-full animate-spin" />
-                : <Camera size={14} className="text-brown-600" />}
-            </button>
+
+            {/* Spacer — pushes buttons to the right on desktop */}
+            <div className="hidden sm:block flex-1" />
+
+            {/* Action buttons */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:pb-1">
+              <button
+                onClick={() => { setEditForm(profile); setEditOpen(true); }}
+                className="inline-flex items-center gap-1.5 bg-cream-100 hover:bg-cream-200 text-brown-700 text-sm font-medium px-4 py-2 rounded-xl transition-all border border-cream-300"
+              >
+                <Edit2 size={13} /> Edit Profile
+              </button>
+              <button
+                onClick={() => { setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); setPwError(''); setPwSuccess(''); setPwOpen(true); }}
+                className="inline-flex items-center gap-1.5 bg-cream-100 hover:bg-cream-200 text-brown-700 text-sm font-medium px-4 py-2 rounded-xl transition-all border border-cream-300"
+              >
+                <Lock size={13} /> Change Password
+              </button>
+              <button
+                onClick={() => navigate('/list-product')}
+                className="inline-flex items-center gap-1.5 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all hover:opacity-90 active:scale-[0.97]"
+                style={{ background: 'linear-gradient(135deg, #C47038 0%, #A65F2B 100%)' }}
+              >
+                <Plus size={13} /> Post an Item
+              </button>
+            </div>
           </div>
 
-          <h1 className="text-2xl font-bold text-white mb-1 tracking-tight">{profile.name}</h1>
-          <p className="text-brown-300 text-sm mb-3">@{user.username}</p>
-
-          {profile.location && (
-            <div className="inline-flex items-center gap-1.5 bg-white/10 text-cream-200 text-xs px-3 py-1.5 rounded-full mb-6">
-              <MapPin size={11} /> {typeof profile.location === 'string' ? profile.location : profile.location.name}
+          {/* Name / username / meta */}
+          <div className="text-center sm:text-left">
+            <div className="flex items-center justify-center sm:justify-start gap-2 mb-0.5">
+              <h1 className="text-xl font-bold text-brown-900 tracking-tight">{profile.name}</h1>
+              {user.isVerified && <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />}
             </div>
-          )}
-
-          {avatarError && <p className="mb-4 text-xs font-medium text-red-200">{avatarError}</p>}
-
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => { setEditForm(profile); setEditOpen(true); }}
-              className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all border border-white/20 backdrop-blur-sm"
-            >
-              <Edit2 size={14} /> Edit Profile
-            </button>
-            <button
-              onClick={() => { setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); setPwError(''); setPwSuccess(''); setPwOpen(true); }}
-              className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all border border-white/20 backdrop-blur-sm"
-            >
-              <Lock size={14} /> Change Password
-            </button>
-            <button
-              onClick={() => navigate('/list-product')}
-              className="inline-flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:opacity-90 transition-all shadow-card"
-              style={{ backgroundColor: '#C47038' }}
-            >
-              <Plus size={14} /> Post an Item
-            </button>
+            <p className="text-brown-400 text-sm mb-3">@{user.username}</p>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+              {profile.location && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-brown-500 bg-cream-100 border border-cream-200 px-3 py-1.5 rounded-full">
+                  <MapPin size={11} className="text-brown-400" />
+                  {typeof profile.location === 'string' ? profile.location : profile.location.name}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5 text-xs text-brown-500 bg-cream-100 border border-cream-200 px-3 py-1.5 rounded-full">
+                <Calendar size={11} className="text-brown-400" /> Member since {memberSince}
+              </span>
+            </div>
+            {avatarError && <p className="mt-2 text-xs text-red-500">{avatarError}</p>}
           </div>
         </div>
       </div>
 
       {/* ══ STATS STRIP ══ */}
-      <div className="bg-white border-b border-cream-300 shadow-soft">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="flex divide-x divide-cream-300">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 mt-3">
+        <div className="bg-white border border-cream-200 rounded-2xl shadow-soft">
+          <div className="flex divide-x divide-cream-200">
             {[
-              { label: 'Listings',     value: myListings.length,  Icon: Package  },
-              { label: 'Rental activity', value: totalRented,     Icon: ShoppingBag },
-              { label: 'Avg rating',   value: '4.8★',             Icon: Star     },
-              { label: 'Member since', value: memberSince,        Icon: Calendar },
+              { label: 'Listings',        value: myListings.length, Icon: Package     },
+              { label: 'Rental activity', value: totalRented,       Icon: ShoppingBag },
+              { label: 'Avg rating',      value: '4.8★',            Icon: Star        },
+              { label: 'Member since',    value: memberSince,       Icon: Award       },
             ].map(({ label, value, Icon }) => (
-              <div key={label} className="flex-1 py-5 flex flex-col items-center gap-1">
-                <div className="flex items-center gap-1.5">
-                  <Icon size={14} className="text-brown-400" />
-                  <span className="text-xl font-bold text-brown-800">{value}</span>
+              <div key={label} className="flex-1 py-4 flex flex-col items-center gap-0.5">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <Icon size={13} className="text-brown-400" />
+                  <span className="text-lg font-bold text-brown-800">{value}</span>
                 </div>
-                <span className="text-xs text-brown-400">{label}</span>
+                <span className="text-[11px] text-brown-400">{label}</span>
               </div>
             ))}
           </div>
@@ -742,228 +763,8 @@ export default function ProfilePage() {
           </div>
         )}
 
-
-        {/* ════════════════ REVIEWS TAB ════════════════ */}
-        {mainTab === 'reviews' && (
-          reviewsLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="bg-white border border-cream-200 rounded-2xl h-32 animate-pulse" />
-              ))}
-            </div>
-          ) : myReviews.length > 0 ? (
-            <div className="space-y-4">
-              {myReviews.map(r => {
-                const productName = r.productId?.productName ?? 'Unknown Product';
-                const productThumb = r.productId?.images?.[0]?.url;
-                return (
-                  <div
-                    key={r._id}
-                    onClick={() => navigate(`/products/${r.productId?._id}`)}
-                    className="bg-white border border-cream-300 rounded-2xl p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Product thumbnail */}
-                      <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-cream-200">
-                        {productThumb
-                          ? <img src={productThumb} alt={productName} className="w-full h-full object-cover" />
-                          : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-3 flex-wrap">
-                          <div>
-                            <span className="font-semibold text-brown-800 text-sm">{productName}</span>
-                            <span className="text-brown-400 text-xs ml-2">
-                              {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-0.5">
-                            {[1,2,3,4,5].map(n => (
-                              <Star key={n} size={12} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-brown-200'} />
-                            ))}
-                          </div>
-                        </div>
-                        <p className="text-brown-500 text-sm leading-relaxed mt-2">{r.comment}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Star size={32} className="text-brown-300" />}
-              title="No reviews yet"
-              desc="Reviews you've written will appear here"
-            />
-          )
-        )}
-
-        {/* ════════════════ HISTORY TAB ════════════════ */}
-        {mainTab === 'history' && (
-          <div>
-            {/* Sub-tab pills */}
-            <div className="flex gap-2 mb-6">
-              {([
-                { key: 'given-out' as HistorySubTab, label: 'Given Out',    Icon: ArrowUpRight,  count: historyRentedOut.length   },
-                { key: 'taken'     as HistorySubTab, label: 'Taken',        Icon: ArrowDownLeft, count: historyRentedFrom.length  },
-              ] as { key: HistorySubTab; label: string; Icon: typeof ArrowUpRight; count: number }[]).map(({ key, label, Icon, count }) => (
-                <button
-                  key={key}
-                  onClick={() => setHistorySub(key)}
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
-                    historySub === key
-                      ? 'bg-brown-700 text-cream-100 border-brown-700 shadow-sm'
-                      : 'bg-white text-brown-500 border-cream-300 hover:border-brown-400 hover:text-brown-700'
-                  }`}
-                >
-                  <Icon size={14} />
-                  {label}
-                  {count > 0 && (
-                    <span className={`ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
-                      historySub === key ? 'bg-white/20 text-white' : 'bg-cream-200 text-brown-500'
-                    }`}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* Given Out — items the user listed that were rented by others */}
-            {historySub === 'given-out' && (
-              historyLoading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
-                  ))}
-                </div>
-              ) : historyRentedOut.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {historyRentedOut.map(h => {
-                    const prod  = h.productId;
-                    const thumb = prod?.images?.[0]?.url;
-                    const renter = h.rentedByUserId;
-                    const ended = new Date(h.endDate) < new Date();
-                    return (
-                      <div
-                        key={h._id}
-                        onClick={() => prod?._id && navigate(`/products/${prod._id}`)}
-                        className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
-                      >
-                        <div className="flex gap-4 mb-3">
-                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-cream-200">
-                            {thumb
-                              ? <img src={thumb} alt={prod?.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                              : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{prod?.productName ?? 'Untitled'}</p>
-                              <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                ended
-                                  ? 'bg-cream-200 text-brown-500 border border-cream-300'
-                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
-                              }`}>
-                                {ended ? 'Completed' : 'Active'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
-                              <Calendar size={10} className="text-brown-400 shrink-0" />
-                              {fmtDate(h.startDate)} → {fmtDate(h.endDate)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2">
-                          {renter ? (
-                            <p className="text-xs text-brown-500">
-                              Rented by: <span className="text-brown-700 font-semibold">{renter.name || renter.username}</span>
-                            </p>
-                          ) : (
-                            <p className="text-xs text-brown-400 italic">{h.isExternalRenter ? 'External renter (not on RentX)' : 'Unknown renter'}</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<ArrowUpRight size={32} className="text-brown-300" />}
-                  title="No items given out yet"
-                  desc="When someone rents one of your items, it'll show up here"
-                />
-              )
-            )}
-
-            {/* Taken — items the user rented from others */}
-            {historySub === 'taken' && (
-              historyLoading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="bg-white border border-cream-200 rounded-2xl h-36 animate-pulse" />
-                  ))}
-                </div>
-              ) : historyRentedFrom.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {historyRentedFrom.map(h => {
-                    const prod  = h.productId;
-                    const thumb = prod?.images?.[0]?.url;
-                    const owner = prod?.userId;
-                    const ended = new Date(h.endDate) < new Date();
-                    return (
-                      <div
-                        key={h._id}
-                        onClick={() => prod?._id && navigate(`/products/${prod._id}`)}
-                        className="bg-white border border-cream-200 rounded-2xl p-4 shadow-soft hover:shadow-card transition-shadow cursor-pointer group"
-                      >
-                        <div className="flex gap-4 mb-3">
-                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-cream-200">
-                            {thumb
-                              ? <img src={thumb} alt={prod?.productName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                              : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-brown-300" /></div>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="font-semibold text-brown-800 text-sm truncate leading-snug">{prod?.productName ?? 'Untitled'}</p>
-                              <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                ended
-                                  ? 'bg-cream-200 text-brown-500 border border-cream-300'
-                                  : 'bg-green-50 text-green-700 border border-green-200'
-                              }`}>
-                                {ended ? 'Completed' : 'Active'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[11px] text-brown-500 bg-cream-100 rounded-lg px-2.5 py-1.5 w-fit">
-                              <Calendar size={10} className="text-brown-400 shrink-0" />
-                              {fmtDate(h.startDate)} → {fmtDate(h.endDate)}
-                            </div>
-                          </div>
-                        </div>
-                        {owner && (
-                          <div className="bg-cream-50 border border-cream-200 rounded-xl px-3 py-2">
-                            <p className="text-xs text-brown-500">
-                              Owner: <span className="text-brown-700 font-semibold">{owner.name || owner.username}</span>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<ArrowDownLeft size={32} className="text-brown-300" />}
-                  title="No items rented yet"
-                  desc="Items you've rented from others will appear here"
-                  cta="Browse items"
-                  onCta={() => navigate('/')}
-                />
-              )
-            )}
-          </div>
-        )}
       </div>
+
 
       {/* ══ EDIT PROFILE MODAL ══ */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Profile" maxWidth="max-w-lg">

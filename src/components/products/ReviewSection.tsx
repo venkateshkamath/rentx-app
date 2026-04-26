@@ -141,9 +141,6 @@ export default function ReviewSection({ productId, isOwner = false }: ReviewSect
     });
   }, [fetchReviews, checkReviewStatus]);
 
-  useEffect(() => { fetchReviews(); }, [fetchReviews]);
-
-
   /* ── Derived ── */
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)

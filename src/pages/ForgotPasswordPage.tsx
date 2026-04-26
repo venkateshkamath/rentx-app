@@ -66,8 +66,6 @@ export default function ForgotPasswordPage() {
 
       await api.auth.verifyEmail(email.trim());
 
-      await api.auth.forgotPassword(email.trim());
-
       setResendTimer(60);
       setStep('otp');
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
@@ -104,8 +102,6 @@ export default function ForgotPasswordPage() {
     try {
 
       await api.auth.verifyEmail(email.trim());
-
-      await api.auth.forgotPassword(email.trim());
 
     } catch (err) {
       setError((err as Error).message ?? 'Failed to resend OTP.');
