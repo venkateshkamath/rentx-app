@@ -12,7 +12,6 @@ import {
   MapPin,
   MessageCircle,
   Share2,
-  ShieldCheck,
   Star,
   X,
 } from 'lucide-react';
@@ -652,13 +651,6 @@ export default function ProductDetailPage() {
                     <MessageCircle size={18} />
                     {product.available ? 'Request rental' : 'Currently unavailable'}
                   </Button>
-
-                  <div className="flex items-start gap-2 rounded-lg bg-cream-100 px-3 py-3">
-                    <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brown-400" />
-                    <span className="text-xs font-700 leading-5 text-brown-400">
-                      Sign in only when you are ready to message the owner.
-                    </span>
-                  </div>
                 </div>
               )}
 
