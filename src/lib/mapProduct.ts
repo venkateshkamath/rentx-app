@@ -15,7 +15,7 @@ export function mapApiProduct(p: any): Product {
     title: p.productName ?? 'Untitled',
     description: p.description ?? '',
     images: Array.isArray(p.images) && p.images.length > 0
-      ? p.images.map((img: { url: string }) => ({ url: img.url }))
+      ? p.images.map((img: { url: string; publicId?: string }) => ({ url: img.url, publicId: img.publicId }))
       : [{ url: 'https://placehold.co/600x400?text=No+Image' }],
     price: p.rentPrice ?? p.productPrice ?? 0,
     originalPrice: p.productOriginalPrice ?? 0,
@@ -30,7 +30,7 @@ export function mapApiProduct(p: any): Product {
       return { placeId: '', name: typeof p.location === 'string' ? p.location : '', lat: 0, lng: 0 };
     })(),
     ownerId: (typeof p.userId === 'object' ? p.userId?._id : p.userId) ?? '',
-    ownerName: (typeof p.userId === 'object' ? (p.userId?.username || p.userId?.name) : (p.username || p.name)) ?? 'Unknown',
+    ownerName: (typeof p.userId === 'object' ? (p.userId?.name || p.userId?.username) : (p.name || p.username)) ?? 'Unknown',
     ownerAvatar: '',
     rating: typeof p.rating === 'number' ? p.rating : 0,
     reviewCount: typeof p.reviewCount === 'number' ? p.reviewCount : 0,

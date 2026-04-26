@@ -135,8 +135,10 @@ export default function ReviewSection({ productId, isOwner = false }: ReviewSect
   }, [productId, isAuthenticated]);
 
   useEffect(() => {
-    fetchReviews();
-    checkReviewStatus();
+    queueMicrotask(() => {
+      fetchReviews();
+      checkReviewStatus();
+    });
   }, [fetchReviews, checkReviewStatus]);
 
   useEffect(() => { fetchReviews(); }, [fetchReviews]);

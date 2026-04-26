@@ -48,7 +48,7 @@ export default function LocationAutocomplete({
 
   // Sync display text when parent value changes (e.g. form reset)
   useEffect(() => {
-    setDisplayValue(value?.name ?? '');
+    queueMicrotask(() => setDisplayValue(value?.name ?? ''));
   }, [value]);
 
   useEffect(() => {

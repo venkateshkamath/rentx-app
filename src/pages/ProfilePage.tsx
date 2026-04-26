@@ -12,18 +12,17 @@ import { useAuth } from '../context/AuthContext';
 import ProductCard from '../components/products/ProductCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-
-import Badge from '../components/ui/Badge';
 import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+import PasswordChecklist from '../components/ui/PasswordChecklist';
 
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
+import { getPasswordIssues } from '../lib/passwordPolicy';
 import type { LocationData, Product } from '../types';
 import UserAvatar from '../components/ui/UserAvatar';
 
 /* ─── Types ─── */
 type MainTab  = 'listings' | 'rented' | 'reviews' | 'history';
-type RentedSubTab = 'renting' | 'rented-out';
 type HistorySubTab = 'given-out' | 'taken';
 
 type ReviewSubTab = 'given' | 'received';
@@ -53,7 +52,6 @@ interface OwnedProduct extends Product {
   rentalEndDate?: string;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 interface HistoryRecord {
   _id: string;
   productId: { _id: string; productName: string; images: { url: string }[]; location?: { name?: string }; rentPrice?: number; userId?: { _id: string; username: string; name: string } };
@@ -72,15 +70,8 @@ interface UserReview {
   comment: string;
   createdAt: string;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ─── Helpers ─── */
-function locStr(loc: string | { name?: string } | undefined): string {
-  if (!loc) return '—';
-  if (typeof loc === 'string') return loc;
-  return loc.name ?? '—';
-}
-
 function fmtDate(iso?: string) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -121,7 +112,6 @@ export default function ProfilePage() {
   const [myListings,     setMyListings]     = useState<OwnedProduct[]>([]);
   const [listingsLoading, setListingsLoading] = useState(true);
   const [myRentals,      setMyRentals]      = useState<RentedProduct[]>([]);
-  const [rentalsLoading,  setRentalsLoading]  = useState(true);
 
   /* ── History data ── */
   const [historyRentedOut,  setHistoryRentedOut]  = useState<HistoryRecord[]>([]);
@@ -156,8 +146,7 @@ export default function ProfilePage() {
     // Rentals (items I'm renting from others)
     api.products.getMyRentals()
       .then(res => setMyRentals((res.data as RentedProduct[]) ?? []))
-      .catch(() => setMyRentals([]))
-      .finally(() => setRentalsLoading(false));
+      .catch(() => setMyRentals([]));
 
     // Rental history
     api.products.getRentalHistory()
@@ -228,16 +217,21 @@ export default function ProfilePage() {
       setPwError('All fields are required.');
       return;
     }
-    if (pwForm.newPassword.length < 6) {
-      setPwError('New password must be at least 6 characters.');
-      return;
-    }
     if (pwForm.newPassword !== pwForm.confirmPassword) {
       setPwError('New passwords do not match.');
       return;
     }
     if (pwForm.oldPassword === pwForm.newPassword) {
       setPwError('New password must differ from the current one.');
+      return;
+    }
+    const passwordIssues = getPasswordIssues(pwForm.newPassword, {
+      email: user?.email,
+      username: user?.username,
+      name: user?.name,
+    });
+    if (passwordIssues.length > 0) {
+      setPwError(`Password requirement missing: ${passwordIssues[0]}.`);
       return;
     }
 
@@ -741,7 +735,7 @@ export default function ProfilePage() {
                   title="No items rented yet"
                   desc="Items you've rented from others will appear here"
                   cta="Browse items"
-                  onCta={() => navigate('/')}
+                  onCta={() => navigate('/search')}
                 />
               )
             )}
@@ -1058,7 +1052,7 @@ export default function ProfilePage() {
                 value={pwForm.newPassword}
                 onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
                 className="input-field pr-10"
-                placeholder="Min. 6 characters"
+                placeholder="Strong password"
               />
               <button
                 type="button"
@@ -1067,6 +1061,12 @@ export default function ProfilePage() {
               >
                 {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
+            </div>
+            <div className="mt-2">
+              <PasswordChecklist
+                password={pwForm.newPassword}
+                context={{ email: user?.email, username: user?.username, name: user?.name }}
+              />
             </div>
           </div>
 
