@@ -90,7 +90,6 @@ export default function ChatPage() {
   const [activeChat, setActiveChat]       = useState<ActiveChat | null>(null);
   const [chatStatus, setChatStatus]       = useState<ChatStatus>(null);
   const [disabledReason, setDisabledReason] = useState('');
-  const [activeChatOwnerId, setActiveChatOwnerId] = useState<string | null>(null);
 
   /* ── Input / image ── */
   const [input, setInput]                   = useState('');
@@ -147,7 +146,9 @@ export default function ChatPage() {
       .finally(() => setListLoading(false));
   }, []);
 
-  useEffect(() => { if (isAuthenticated) loadChatList(); }, [isAuthenticated, loadChatList]);
+  useEffect(() => {
+    if (isAuthenticated) queueMicrotask(loadChatList);
+  }, [isAuthenticated, loadChatList]);
 
   /* ── Scroll to bottom ── */
   const isFirstScroll = useRef(true);
@@ -210,16 +211,9 @@ export default function ChatPage() {
       disabledReason?: string;
       isNewChat?: boolean;
     }) => {
-      const uid = userRef.current?.id ?? '';
       const initialMessageKey = `${data.chatId}:${initialMessageParam ?? ''}:${initialImageParam ?? ''}`;
 
       lastJoinedRef.current = data.chatId;
-
-      // Figure out who the owner is from participants (owner = not current user, but we don't know
-      // directly — we'll derive it from the product owner which is stored in productId).
-      // For now store participants so we can find the other user.
-      const ownerParticipant = data.participants?.find(p => p._id !== uid);
-      setActiveChatOwnerId(ownerParticipant?._id ?? null);
 
       setActiveChatId(data.chatId);
       setChatStatus(data.status);
@@ -399,58 +393,6 @@ export default function ChatPage() {
     );
   }
 
-  /* ── Derived: is the current user the owner of this chat? ── */
-  const isOwnerOfActiveChat = !!(
-    user &&
-    activeChatOwnerId &&
-    // The owner is NOT the activeChatOwnerId — activeChatOwnerId is the *other* user.
-    // We need to check via productId ownership. Since we store ownerId in product,
-    // and the backend participants are [ownerId, requesterId], we check ownerIdParam
-    // OR if the other user's ID matches ownerIdParam.
-    // Simpler: owner is whoever is NOT the requester. We know from productId whether
-    // we own the product. Use ownerIdParam when coming from product page, otherwise
-    // check via chatList (other user's id ≠ current user means current user could be owner).
-    // Best approach: check if activeChatOwnerId === user.id is FALSE (they are the OTHER user).
-    // The owner is the user whose id is NOT activeChatOwnerId.
-    // Actually activeChatOwnerId is set from the first participant who is NOT the current user.
-    // If the current user IS the product owner, then activeChatOwnerId is the requester.
-    // We need to know if the current user owns the product.
-    // We'll compare with ownerIdParam when available, otherwise rely on sidebar data.
-    (() => {
-      if (ownerIdParam) return user.id !== ownerIdParam; // current user is NOT the requester's owner param
-      const meta = chatList.find(c => c.chatId === activeChatId);
-      if (meta) return meta.otherUser.id !== user.id; // shouldn't be equal but defensive
-      return false;
-    })()
-  );
-
-  // A cleaner way: track ownership flag from chat history
-  // The owner of a product is whoever is NOT the user who initiated the chat (requester).
-  // Since we pass ownerIdParam in URL when requesting, we know: if ownerIdParam exists and
-  // ownerIdParam !== user.id → current user is the requester. Otherwise current user may be owner.
-  // For sidebar-selected chats we need another approach:
-  const amIOwner = (() => {
-    if (ownerIdParam) return user?.id !== ownerIdParam;
-    // For chats loaded from sidebar: if the other user initiated, we'd be the owner.
-    // We can't know without additional data — default to false (safe: non-owner can't accept).
-    // The socket join response doesn't tell us who the product owner is directly.
-    // We'd need the product's owner from Chat participants order or a separate field.
-    // For now: the "ownerIdParam" path covers the email link & product page.
-    // Sidebar-selected chats will show accept/reject if ownerIdParam is absent and chatStatus===pending.
-    // We'll store isOwnerChat in state from chat-history response in the future.
-    return false;
-  })();
-
-  // Use productIdParam's ownerIdParam — but for sidebar chats we track via _activeChatOwnerId
-  // The real check: current user is owner if their id is NOT in the "requester" slot.
-  // Since backend creates chat as [ownerId, requesterId], participant[0] is always owner.
-  // We expose this via the participants array in chat-history.
-  // activeChatOwnerId = first non-current-user participant. If the product owner is the other user,
-  // then current user is the requester. If current user IS the owner, activeChatOwnerId is requester.
-  // We need to distinguish. Let's add a dedicated state: isCurrentUserOwner.
-  // We'll derive it: if ownerIdParam is set → !amIRequester. Otherwise check if I am in owner position.
-  // Since we know ownerIdParam from URL for new chats, and for existing chats we can check productId.
-
   /* ── Actions ── */
   const sendMessage = () => {
     if ((!input.trim() && !pendingImage) || !activeChat || !user) return;
@@ -525,7 +467,6 @@ export default function ChatPage() {
     setActiveChat(null);
     setChatStatus(null);
     setDisabledReason('');
-    setActiveChatOwnerId(null);
     setJoinError('');
     setInput('');
     setPendingImage(null);
@@ -782,25 +723,36 @@ export default function ChatPage() {
 
             {/* Owner: Accept / Reject panel */}
             {showOwnerActions && activeChat && (
-              <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 shrink-0">
-                <p className="text-sm font-semibold text-amber-800 mb-2">
-                  Someone wants to chat about this rental. Accept or decline?
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleAccept}
-                    disabled={requestActionLoading}
-                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-                  >
-                    <Check size={15} /> Accept
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    disabled={requestActionLoading}
-                    className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-                  >
-                    <XCircle size={15} /> Decline
-                  </button>
+              <div className="shrink-0 border-b border-cream-300 bg-cream-50 px-4 py-3">
+                <div className="flex flex-col gap-3 rounded-xl border border-cream-300 bg-white px-4 py-3 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cream-100 text-brown-700">
+                      <MessageCircle size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-900 text-brown-900">New chat request</p>
+                      <p className="mt-0.5 text-xs font-600 leading-5 text-brown-500">
+                        A renter wants to discuss this listing. Accept to open messaging, or decline to close the request.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+                    <button
+                      onClick={handleReject}
+                      disabled={requestActionLoading}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-900 text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <XCircle size={14} /> Decline
+                    </button>
+                    <button
+                      onClick={handleAccept}
+                      disabled={requestActionLoading}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brown-900 px-4 text-xs font-900 text-white shadow-soft transition-colors hover:bg-accent disabled:opacity-50"
+                    >
+                      <Check size={14} /> Accept
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

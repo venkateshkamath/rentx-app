@@ -11,6 +11,7 @@ export interface LocationData {
 
 export interface ProductImage {
   url: string;
+  publicId?: string;
   caption?: string;
 }
 

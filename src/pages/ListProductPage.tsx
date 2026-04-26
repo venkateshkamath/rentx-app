@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { Upload, X, CheckCircle2, Plus, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import UserAvatar from '../components/ui/UserAvatar';
 import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+import RichTextEditor from '../components/ui/RichTextEditor';
 import type { Category, Condition, LocationData } from '../types';
 import { api } from '../lib/api';
 
@@ -69,7 +71,7 @@ export default function ListProductPage() {
   const validate = (): boolean => {
     const e: typeof errors = {};
     if (!form.title.trim())       e.title       = 'Title is required';
-    if (!form.description.trim()) e.description = 'Description is required';
+    if (!form.description.replace(/<(.|\n)*?>/g, '').trim()) e.description = 'Description is required';
     if (!form.category)           e.category    = 'Select a category';
     if (!form.condition)          e.condition   = 'Select condition';
     if (!form.price || isNaN(Number(form.price))) e.price = 'Enter a valid rent price';
@@ -134,23 +136,25 @@ export default function ListProductPage() {
         {step !== 'done' && (
           <>
             <div className="mb-7">
-              <h1 className="text-2xl font-semibold text-brown-900">Post an Item</h1>
+              <h1 className="text-2xl font-800 text-brown-900 tracking-tight">Post an Item</h1>
               <p className="text-brown-400 text-sm mt-1">Fill in the details to list your item on RentX</p>
             </div>
 
-            <div className="flex items-center gap-1 mb-8">
+            <div className="flex items-start mb-8 max-w-xs mx-auto w-full">
               {STEPS.map((s, i) => (
-                <div key={s.key} className="flex items-center flex-1">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-all ${
-                    i < stepIdx  ? 'bg-brown-500 text-white' :
-                    i === stepIdx ? 'bg-brown-700 text-white ring-4 ring-brown-200' :
-                                    'bg-cream-300 text-brown-400'
-                  }`}>
-                    {i < stepIdx ? '✓' : i + 1}
+                <div key={s.key} className="flex items-start flex-1">
+                  <div className="flex flex-col items-center gap-1.5 shrink-0">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
+                      i < stepIdx   ? 'bg-brown-500 text-white' :
+                      i === stepIdx ? 'bg-brown-700 text-white' :
+                                      'bg-cream-300 text-brown-400'
+                    }`}>
+                      {i < stepIdx ? '✓' : i + 1}
+                    </div>
+                    <span className={`text-xs font-600 ${i === stepIdx ? 'text-brown-700' : 'text-brown-300'}`}>{s.label}</span>
                   </div>
-                  <span className={`ml-1 text-xs hidden sm:inline ${i === stepIdx ? 'text-brown-700 font-medium' : 'text-brown-300'}`}>{s.label}</span>
                   {i < STEPS.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-2 rounded-full ${i < stepIdx ? 'bg-brown-400' : 'bg-cream-300'}`} />
+                    <div className={`flex-1 h-0.5 mt-3.5 mx-2 rounded-full ${i < stepIdx ? 'bg-brown-400' : 'bg-cream-300'}`} />
                   )}
                 </div>
               ))}
@@ -158,12 +162,12 @@ export default function ListProductPage() {
           </>
         )}
 
-        <div className="bg-white rounded-2xl border border-cream-300 shadow-card p-6 md:p-8">
+        <div className="bg-white rounded-2xl border border-cream-200 shadow-card p-6 md:p-8">
 
           {/* ── STEP 1: DETAILS ── */}
           {step === 'details' && (
             <div>
-              <h2 className="text-lg font-semibold text-brown-800 mb-1">Item Details</h2>
+              <h2 className="text-lg font-700 text-brown-800 mb-1">Item Details</h2>
               <p className="text-brown-400 text-sm mb-6">Tell renters everything they need to know</p>
 
               <div className="space-y-4">
@@ -182,12 +186,10 @@ export default function ListProductPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-brown-700 mb-1.5">Description</label>
-                  <textarea
+                  <RichTextEditor
                     value={form.description}
-                    onChange={e => set('description', e.target.value)}
+                    onChange={val => set('description', val)}
                     placeholder="Describe your item — condition, accessories, any usage limits…"
-                    rows={3}
-                    className="input-field resize-none"
                   />
                   {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
                 </div>
@@ -342,7 +344,7 @@ export default function ListProductPage() {
                     {form.category && <span className="text-xs text-brown-400 bg-cream-100 px-2 py-0.5 rounded-full border border-cream-300">{form.category}</span>}
                   </div>
                   <h3 className="font-semibold text-brown-900 mb-1">{form.title || 'Untitled listing'}</h3>
-                  <p className="text-brown-500 text-sm line-clamp-2 mb-3">{form.description}</p>
+                  <div className="text-brown-500 text-sm line-clamp-2 mb-3 rich-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(form.description) }} />
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="font-bold text-brown-800 text-lg">₹{form.price || '0'}<span className="text-xs font-normal text-brown-400">/day</span></span>
@@ -351,8 +353,8 @@ export default function ListProductPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <UserAvatar name={user?.name ?? ''} avatar={user?.avatar} className="w-5 h-5 rounded-full" textClassName="text-[9px] font-bold" />
-                      <span className="text-xs text-brown-400">{user?.name}</span>
+                      <UserAvatar name={user?.name || user?.username || ''} avatar={user?.avatar} className="w-5 h-5 rounded-full" textClassName="text-[9px] font-bold" />
+                      <span className="text-xs text-brown-400">{user?.name || user?.username}</span>
                     </div>
                   </div>
                   {form.location && <p className="text-xs text-brown-400 mt-2">📍 {form.location.name}</p>}
@@ -385,7 +387,7 @@ export default function ListProductPage() {
                 Your item is now live on RentX. Renters can discover and contact you directly.
               </p>
               <div className="flex gap-3 justify-center">
-                <Button onClick={() => navigate('/')}>Browse Listings</Button>
+                <Button onClick={() => navigate('/search')}>Browse Listings</Button>
                 <Button
                   variant="secondary"
                   onClick={() => {

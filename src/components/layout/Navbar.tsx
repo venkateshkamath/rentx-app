@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MessageCircle, Plus, User, LogOut, ChevronDown, Menu, X, Leaf, Sun, type LucideIcon } from 'lucide-react';
+import { MessageCircle, Plus, User, LogOut, ChevronDown, Menu, X, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
 import RentXLogo from '../ui/RentXLogo';
 import UserAvatar from '../ui/UserAvatar';
 import { getSocket } from '../../lib/socket';
@@ -16,7 +15,6 @@ interface Toast {
 
 export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -85,17 +83,12 @@ export default function Navbar() {
     navigate(latestChatId ? `/chat?chat=${latestChatId}` : '/chat');
   };
 
-  const navLinks: { to: string; label: string; icon: LucideIcon }[] = [
-    // Explore route is temporarily hidden; the logo still routes home.
-    // { to: '/', label: 'Explore', icon: LayoutGrid },
-    // Rent route is temporarily hidden while Explore uses the rent header.
-    // { to: '/?type=rent', label: 'Rent', icon: Tag },
-  ];
+  const navLinks: { to: string; label: string; icon?: LucideIcon }[] = [];
 
   const isActive = (path: string) => location.pathname + location.search === path || (path === '/' && location.pathname === '/' && !location.search);
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-brown-100/60 bg-cream-50/95 shadow-soft backdrop-blur-md">
+    <nav className="sticky top-0 z-40 border-b border-[#ded9ce] bg-[#fbfaf6]/95 shadow-soft backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
 
@@ -125,21 +118,11 @@ export default function Navbar() {
 
           {/* Right actions */}
           <div className="flex items-center gap-2">
-            {/* Temporary theme preview toggle for checking the light green version. */}
-            {/* <button
-              onClick={toggleTheme}
-              title={theme === 'warm' ? 'Preview light green theme' : 'Return to warm theme'}
-              className="hidden items-center gap-1.5 rounded-lg border border-brown-100 bg-white px-3 py-2 text-xs font-semibold text-brown-600 shadow-soft transition hover:bg-cream-200 sm:flex"
-            >
-              {theme === 'warm' ? <Leaf size={14} /> : <Sun size={14} />}
-              {theme === 'warm' ? 'Green' : 'Warm'}
-            </button> */}
-
             {isAuthenticated ? (
               <>
                 <button
                   onClick={() => navigate('/list-product')}
-                  className="hidden items-center gap-1.5 rounded-lg bg-brown-700 px-4 py-2 text-sm font-semibold text-cream-100 shadow-soft transition-all hover:bg-brown-800 hover:shadow-card active:scale-95 sm:flex"
+                  className="hidden items-center gap-1.5 rounded-2xl bg-[#15120f] px-4 py-2.5 text-sm font-800 text-white shadow-soft transition-all hover:bg-[#8f4d2c] hover:shadow-card active:scale-[0.97] sm:flex"
                 >
                   <Plus size={14} strokeWidth={2.5} />
                   Post Item
@@ -148,7 +131,7 @@ export default function Navbar() {
                 <button
                   type="button"
                   onClick={openChat}
-                  className="relative rounded-lg p-2 text-brown-400 transition-colors hover:bg-cream-200 hover:text-brown-700"
+                  className="relative rounded-2xl p-2.5 text-[#6f675d] transition-colors hover:bg-[#f0ece4] hover:text-[#15120f]"
                 >
                   <MessageCircle size={20} />
                   {unreadCount > 0 && (
@@ -162,27 +145,27 @@ export default function Navbar() {
                 <div className="relative">
                   <button
                     onClick={() => setProfileOpen(p => !p)}
-                    className="flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-2.5 transition-colors hover:bg-cream-200"
+                    className="flex items-center gap-1.5 rounded-2xl py-1 pl-1 pr-2.5 transition-colors hover:bg-[#f0ece4]"
                   >
                     <UserAvatar
                       name={user?.name ?? ''}
                       avatar={user?.avatar}
-                      className="w-8 h-8 rounded-lg object-cover ring-1 ring-brown-200"
+                      className="w-8 h-8 rounded-xl object-cover ring-1 ring-[#ded9ce]"
                     />
                     <ChevronDown
                       size={13}
-                      className={`text-brown-400 transition-transform duration-200 ${profileOpen ? 'rotate-180' : ''}`}
+                      className={`text-[#8a8177] transition-transform duration-200 ${profileOpen ? 'rotate-180' : ''}`}
                     />
                   </button>
 
                   {profileOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-lg border border-cream-200 bg-white py-2 shadow-card-hover">
+                    <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-2xl border border-[#ded9ce] bg-[#fbfaf6] py-2 shadow-card-hover">
                       {/* User info */}
-                      <div className="flex items-center gap-3 px-4 py-3 border-b border-cream-200 mb-1">
-                        <UserAvatar name={user?.name ?? ''} avatar={user?.avatar} className="w-9 h-9 rounded-lg object-cover" />
+                      <div className="mb-1 flex items-center gap-3 border-b border-[#ded9ce] px-4 py-3">
+                        <UserAvatar name={user?.name ?? ''} avatar={user?.avatar} className="w-9 h-9 rounded-xl object-cover" />
                         <div>
-                          <p className="font-semibold text-brown-900 text-sm leading-tight">{user?.name}</p>
-                          <p className="text-brown-400 text-xs">@{user?.username}</p>
+                          <p className="text-sm font-800 leading-tight text-[#15120f]">{user?.name}</p>
+                          <p className="text-xs text-[#8a8177]">@{user?.username}</p>
                         </div>
                       </div>
 
@@ -202,14 +185,14 @@ export default function Navbar() {
                             }
                             setProfileOpen(false);
                           }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-brown-600 hover:bg-cream-100 hover:text-brown-900 transition-colors"
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-700 text-[#4f473f] transition-colors hover:bg-[#f0ece4] hover:text-[#15120f]"
                         >
-                          <Icon size={15} className="text-brown-400" />
+                          <Icon size={15} className="text-[#8a8177]" />
                           {label}
                         </button>
                       ))}
 
-                      <div className="border-t border-cream-200 mt-1 pt-1">
+                      <div className="mt-1 border-t border-[#ded9ce] pt-1">
                         <button
                           onClick={handleLogout}
                           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
@@ -226,13 +209,13 @@ export default function Navbar() {
               <>
                 <Link
                   to="/login"
-                  className="hidden rounded-lg px-4 py-2 text-sm font-semibold text-brown-600 transition-colors hover:bg-cream-200 hover:text-brown-900 sm:inline-flex"
+                  className="hidden rounded-2xl px-4 py-2.5 text-sm font-800 text-[#4f473f] transition-colors hover:bg-[#f0ece4] hover:text-[#15120f] sm:inline-flex"
                 >
                   Sign In
                 </Link>
                 <Link
                   to="/register"
-                  className="hidden rounded-lg bg-brown-700 px-4 py-2 text-sm font-semibold text-cream-100 shadow-soft transition-all hover:bg-brown-800 hover:shadow-card active:scale-95 sm:inline-flex"
+                  className="hidden rounded-2xl bg-[#15120f] px-4 py-2.5 text-sm font-800 text-white shadow-soft transition-all hover:bg-[#8f4d2c] hover:shadow-card active:scale-[0.97] sm:inline-flex"
                 >
                   Join Free
                 </Link>
@@ -241,7 +224,7 @@ export default function Navbar() {
 
             <button
               onClick={() => setMenuOpen(m => !m)}
-              className="rounded-lg p-2 text-brown-500 transition-colors hover:bg-cream-200 md:hidden"
+              className="rounded-2xl p-2 text-[#4f473f] transition-colors hover:bg-[#f0ece4] md:hidden"
             >
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
@@ -251,42 +234,32 @@ export default function Navbar() {
 
       {/* Mobile nav */}
       {menuOpen && (
-        <div className="md:hidden border-t border-brown-100 bg-cream-100 px-4 py-3 space-y-1">
+        <div className="space-y-1 border-t border-[#ded9ce] bg-[#fbfaf6] px-4 py-3 md:hidden">
           {navLinks.map(({ to, label, icon: Icon }) => (
             <Link
               key={to}
               to={to}
               onClick={() => setMenuOpen(false)}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-brown-600 transition-colors hover:bg-cream-200"
+              className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-700 text-[#4f473f] transition-colors hover:bg-[#f0ece4]"
             >
-              <Icon size={15} className="text-brown-400" />
+              {Icon && <Icon size={15} className="text-[#8a8177]" />}
               {label}
             </Link>
           ))}
-          <button
-            onClick={() => {
-              toggleTheme();
-              setMenuOpen(false);
-            }}
-            className="flex items-center gap-2.5 rounded-lg border border-brown-100 bg-white px-3 py-2.5 text-sm font-semibold text-brown-600 transition-colors hover:bg-cream-200"
-          >
-            {theme === 'warm' ? <Leaf size={15} className="text-brown-400" /> : <Sun size={15} className="text-brown-400" />}
-            {theme === 'warm' ? 'Green preview' : 'Warm preview'}
-          </button>
           {!isAuthenticated && (
             <>
-              <div className="my-1 border-t border-cream-200" />
+              <div className="my-1 border-t border-[#ded9ce]" />
               <Link
                 to="/login"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-brown-600 transition-colors hover:bg-cream-200"
+                className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-700 text-[#4f473f] transition-colors hover:bg-[#f0ece4]"
               >
                 Sign In
               </Link>
               <Link
                 to="/register"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2.5 rounded-lg bg-brown-700 px-3 py-2.5 text-sm font-semibold text-cream-100 transition-colors hover:bg-brown-800"
+                className="flex items-center gap-2.5 rounded-2xl bg-[#15120f] px-3 py-2.5 text-sm font-800 text-white transition-colors hover:bg-[#8f4d2c]"
               >
                 Join Free
               </Link>
@@ -294,20 +267,20 @@ export default function Navbar() {
           )}
           {isAuthenticated && (
             <>
-              <div className="border-t border-cream-200 my-1" />
+              <div className="my-1 border-t border-[#ded9ce]" />
               <Link
                 to="/list-product"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2.5 rounded-lg bg-brown-50 px-3 py-2.5 text-sm font-semibold text-brown-700 transition-colors hover:bg-brown-100"
+                className="flex items-center gap-2.5 rounded-2xl bg-[#f0ece4] px-3 py-2.5 text-sm font-800 text-[#15120f] transition-colors hover:bg-white"
               >
                 <Plus size={15} /> Post an Item
               </Link>
               <Link
                 to="/profile"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-brown-600 transition-colors hover:bg-cream-200"
+                className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-700 text-[#4f473f] transition-colors hover:bg-[#f0ece4]"
               >
-                <User size={15} className="text-brown-400" /> My Profile
+                <User size={15} className="text-[#8a8177]" /> My Profile
               </Link>
             </>
           )}

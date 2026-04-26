@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { AuthUser, LocationData } from '../types';
 import { api, setToken, clearToken } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
@@ -22,6 +23,8 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+const LAST_ACTIVITY_KEY = 'rentx_last_activity';
 
 function loadUser(): AuthUser | null {
   try {
@@ -33,6 +36,7 @@ function loadUser(): AuthUser | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<AuthUser | null>(loadUser);
 
   // Keep localStorage in sync
@@ -47,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         data: { token: string; user: { userId: string; name: string; username: string; email: string; phone: string; location: LocationData; avatar?: string; createdAt: string } };
       };
       setToken(res.data.token);
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       setUser({
         id: res.data.user.userId,
         name: res.data.user.name,
@@ -97,11 +102,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     clearToken();
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
     disconnectSocket();
     setUser(null);
-  };
+  }, []);
+
+  const logoutForInactivity = useCallback(() => {
+    logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let lastWrite = 0;
+
+    const markActivity = () => {
+      const now = Date.now();
+      if (now - lastWrite > 1000) {
+        localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+        lastWrite = now;
+      }
+    };
+
+    const scheduleLogout = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(logoutForInactivity, INACTIVITY_TIMEOUT_MS);
+    };
+
+    const handleActivity = () => {
+      markActivity();
+      scheduleLogout();
+    };
+
+    const checkElapsedTime = () => {
+      const lastActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY) || Date.now());
+      if (Date.now() - lastActivity >= INACTIVITY_TIMEOUT_MS) {
+        logoutForInactivity();
+        return;
+      }
+      scheduleLogout();
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'rentx_token' && !event.newValue) logoutForInactivity();
+      if (event.key === LAST_ACTIVITY_KEY) checkElapsedTime();
+    };
+
+    markActivity();
+    scheduleLogout();
+
+    const events: Array<keyof WindowEventMap> = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart', 'focus'];
+    events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
+    document.addEventListener('visibilitychange', checkElapsedTime);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach(event => window.removeEventListener(event, handleActivity));
+      document.removeEventListener('visibilitychange', checkElapsedTime);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [logoutForInactivity, user]);
 
   const updateUser = (updates: Partial<AuthUser>) => {
     setUser(current => current ? { ...current, ...updates } : current);
