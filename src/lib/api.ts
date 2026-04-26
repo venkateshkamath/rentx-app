@@ -2,6 +2,21 @@ const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
 
 import type { LocationData } from "../types";
 
+const DEFAULT_CACHE_TTL_MS = 60_000;
+
+type CacheEntry = {
+  expiresAt: number;
+  value: unknown;
+};
+
+interface RequestOptions {
+  cacheTtlMs?: number;
+}
+
+const responseCache = new Map<string, CacheEntry>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
+let cacheEpoch = 0;
+
 export function getToken(): string | null {
   return localStorage.getItem("rentx_token");
 }
@@ -13,28 +28,76 @@ export function setToken(token: string): void {
 export function clearToken(): void {
   localStorage.removeItem("rentx_token");
   localStorage.removeItem("rentx_user");
+  clearApiCache();
+}
+
+export function clearApiCache(match?: string): void {
+  if (!match) {
+    cacheEpoch += 1;
+    responseCache.clear();
+    inFlightRequests.clear();
+    return;
+  }
+
+  for (const key of responseCache.keys()) {
+    if (key.includes(match)) responseCache.delete(key);
+  }
+  for (const key of inFlightRequests.keys()) {
+    if (key.includes(match)) inFlightRequests.delete(key);
+  }
 }
 
 async function request<T = unknown>(
   path: string,
   init: RequestInit = {},
+  options: RequestOptions = {},
 ): Promise<T> {
   const token = getToken();
   const isFormData = init.body instanceof FormData;
+  const method = (init.method ?? "GET").toUpperCase();
+  const shouldCache = method === "GET" && (options.cacheTtlMs ?? 0) > 0;
+  const cacheKey = `${method}:${path}:${token ?? "guest"}`;
+  const requestEpoch = cacheEpoch;
+
+  if (shouldCache) {
+    const cached = responseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value as T;
+    }
+
+    const inFlight = inFlightRequests.get(cacheKey);
+    if (inFlight) return inFlight as Promise<T>;
+  }
 
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
-  const data = await res.json();
+  const fetchPromise = fetch(`${BASE}${path}`, { ...init, headers })
+    .then(async res => {
+      const data = await res.json();
 
-  if (!res.ok) {
-    throw new Error((data as { message?: string }).message ?? "Request failed");
-  }
+      if (!res.ok) {
+        throw new Error((data as { message?: string }).message ?? "Request failed");
+      }
 
-  return data as T;
+      if (method !== "GET") clearApiCache();
+      if (shouldCache && requestEpoch === cacheEpoch) {
+        responseCache.set(cacheKey, {
+          expiresAt: Date.now() + (options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS),
+          value: data,
+        });
+      }
+
+      return data as T;
+    })
+    .finally(() => {
+      if (shouldCache) inFlightRequests.delete(cacheKey);
+    });
+
+  if (shouldCache) inFlightRequests.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }
 
 export const api = {
@@ -70,10 +133,10 @@ export const api = {
         body: JSON.stringify({ email, otp, ...(purpose && { purpose }) }),
       }),
 
-    resetPassword: (email: string, otp: string, newPassword: string) =>
+    resetPassword: (email: string, resetToken: string, newPassword: string) =>
       request("/auth/reset-password", {
         method: "POST",
-        body: JSON.stringify({ email, otp, newPassword }),
+        body: JSON.stringify({ email, resetToken, newPassword }),
       }),
 
     updateAvatar: (formData: FormData) =>
@@ -105,18 +168,18 @@ export const api = {
   },
 
   products: {
-    getAll: () => request<{ success: boolean; data: unknown[] }>("/products"),
+    getAll: () => request<{ success: boolean; data: unknown[] }>("/products", {}, { cacheTtlMs: DEFAULT_CACHE_TTL_MS }),
     getById: (id: string) =>
-      request<{ success: boolean; data: unknown }>(`/products/${id}`),
+      request<{ success: boolean; data: unknown }>(`/products/${id}`, {}, { cacheTtlMs: DEFAULT_CACHE_TTL_MS }),
     getUserProducts: () =>
-      request<{ success: boolean; data: unknown[] }>("/products/user"),
+      request<{ success: boolean; data: unknown[] }>("/products/user", {}, { cacheTtlMs: 30_000 }),
     create: (formData: FormData) =>
       request("/products", { method: "POST", body: formData }),
 
-    update: (id: string, body: Record<string, unknown>) =>
+    update: (id: string, body: Record<string, unknown> | FormData) =>
       request(`/products/${id}`, {
         method: "PATCH",
-        body: JSON.stringify(body),
+        body: body instanceof FormData ? body : JSON.stringify(body),
       }),
 
     getChatParticipants: (id: string) =>
@@ -125,7 +188,7 @@ export const api = {
       ),
 
     getMyRentals: () =>
-      request<{ success: boolean; data: unknown[] }>("/products/my-rentals"),
+      request<{ success: boolean; data: unknown[] }>("/products/my-rentals", {}, { cacheTtlMs: 30_000 }),
 
     updateStatus: (
       id: string,
@@ -146,7 +209,7 @@ export const api = {
       request<{
         success: boolean;
         data: { rentedOut: unknown[]; rentedFrom: unknown[] };
-      }>("/products/rental-history"),
+      }>("/products/rental-history", {}, { cacheTtlMs: 30_000 }),
   },
 
   reviews: {

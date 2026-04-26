@@ -723,25 +723,36 @@ export default function ChatPage() {
 
             {/* Owner: Accept / Reject panel */}
             {showOwnerActions && activeChat && (
-              <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 shrink-0">
-                <p className="text-sm font-semibold text-amber-800 mb-2">
-                  Someone wants to chat about this rental. Accept or decline?
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleAccept}
-                    disabled={requestActionLoading}
-                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-                  >
-                    <Check size={15} /> Accept
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    disabled={requestActionLoading}
-                    className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-                  >
-                    <XCircle size={15} /> Decline
-                  </button>
+              <div className="shrink-0 border-b border-cream-300 bg-cream-50 px-4 py-3">
+                <div className="flex flex-col gap-3 rounded-xl border border-cream-300 bg-white px-4 py-3 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cream-100 text-brown-700">
+                      <MessageCircle size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-900 text-brown-900">New chat request</p>
+                      <p className="mt-0.5 text-xs font-600 leading-5 text-brown-500">
+                        A renter wants to discuss this listing. Accept to open messaging, or decline to close the request.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+                    <button
+                      onClick={handleReject}
+                      disabled={requestActionLoading}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-900 text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <XCircle size={14} /> Decline
+                    </button>
+                    <button
+                      onClick={handleAccept}
+                      disabled={requestActionLoading}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brown-900 px-4 text-xs font-900 text-white shadow-soft transition-colors hover:bg-accent disabled:opacity-50"
+                    >
+                      <Check size={14} /> Accept
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

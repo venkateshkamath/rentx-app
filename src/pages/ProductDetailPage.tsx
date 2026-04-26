@@ -8,11 +8,13 @@ import {
   ChevronRight,
   Clock,
   Edit2,
+  ImagePlus,
   MapPin,
   MessageCircle,
   Share2,
   ShieldCheck,
   Star,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/ui/Modal';
@@ -22,7 +24,8 @@ import ReviewSection from '../components/products/ReviewSection';
 import UserAvatar from '../components/ui/UserAvatar';
 import LocationAutocomplete from '../components/ui/LocationAutocomplete';
 import RichTextEditor from '../components/ui/RichTextEditor';
-import type { Category, Condition, LocationData, Product } from '../types';
+import Skeleton from '../components/ui/Skeleton';
+import type { Category, Condition, LocationData, Product, ProductImage } from '../types';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
 
@@ -67,6 +70,9 @@ export default function ProductDetailPage() {
   // Owner edit state
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>({ title: '', description: '', category: '', condition: '', price: '', originalPrice: '', location: null });
+  const [editImages, setEditImages] = useState<ProductImage[]>([]);
+  const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
   const [statusLoading, setStatusLoading] = useState(false);
@@ -80,33 +86,42 @@ export default function ProductDetailPage() {
   const [rentForm, setRentForm] = useState<RentForm>({ selectedUserId: '', startDate: '', endDate: '' });
   const [rentError, setRentError] = useState('');
   const [rentLoading, setRentLoading] = useState(false);
+  const currentUserId = user?.id;
 
   useEffect(() => {
     if (!id) return;
+    let active = true;
     queueMicrotask(() => {
       setLoading(true);
       setActiveImage(0);
     });
-    api.products.getById(id)
-      .then(res => {
-        const mapped = mapApiProduct(res.data);
+    Promise.all([
+      api.products.getById(id),
+      api.products.getAll().catch(() => ({ data: [] as unknown[] })),
+    ])
+      .then(([productRes, allRes]) => {
+        if (!active) return;
+        const mapped = mapApiProduct(productRes.data);
         setProduct(mapped);
-        return api.products.getAll()
-          .then(allRes => {
-            const relatedProducts = (allRes.data as unknown[])
-              .map(mapApiProduct)
-              .filter(p => p.id !== mapped.id && p.category === mapped.category)
-              .slice(0, 3);
-            setRelated(relatedProducts);
-          })
-          .catch(() => setRelated([]));
+        const relatedProducts = (allRes.data as unknown[])
+          .map(mapApiProduct)
+          .filter(p => p.id !== mapped.id && p.category === mapped.category && (!currentUserId || p.ownerId !== currentUserId))
+          .slice(0, 3);
+        setRelated(relatedProducts);
       })
       .catch(() => {
+        if (!active) return;
         setProduct(null);
         setRelated([]);
       })
-      .finally(() => setLoading(false));
-  }, [id]);
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id, currentUserId]);
 
   useEffect(() => {
     const scrollEl = document.querySelector('main');
@@ -140,6 +155,7 @@ export default function ProductDetailPage() {
 
   const openEdit = () => {
     if (!product) return;
+    newImagePreviews.forEach(url => URL.revokeObjectURL(url));
     setEditForm({
       title: product.title,
       description: product.description,
@@ -149,8 +165,52 @@ export default function ProductDetailPage() {
       originalPrice: String(product.originalPrice || ''),
       location: product.location,
     });
+    setEditImages(product.images.filter(image => !image.url.includes('placehold.co')));
+    setNewImageFiles([]);
+    setNewImagePreviews([]);
     setEditError('');
     setEditOpen(true);
+  };
+
+  const closeEdit = () => {
+    newImagePreviews.forEach(url => URL.revokeObjectURL(url));
+    setNewImageFiles([]);
+    setNewImagePreviews([]);
+    setEditOpen(false);
+  };
+
+  const handleAddEditImages = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const availableSlots = Math.max(0, 5 - editImages.length - newImageFiles.length);
+    if (availableSlots === 0) {
+      setEditError('You can keep up to 5 photos per listing.');
+      return;
+    }
+
+    const selected = files.slice(0, availableSlots);
+    setNewImageFiles(prev => [...prev, ...selected]);
+    setNewImagePreviews(prev => [...prev, ...selected.map(file => URL.createObjectURL(file))]);
+    if (files.length > selected.length) {
+      setEditError('Only 5 photos are allowed per listing.');
+    } else {
+      setEditError('');
+    }
+  };
+
+  const removeExistingEditImage = (index: number) => {
+    setEditImages(prev => prev.filter((_, current) => current !== index));
+  };
+
+  const removeNewEditImage = (index: number) => {
+    setNewImageFiles(prev => prev.filter((_, current) => current !== index));
+    setNewImagePreviews(prev => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed);
+      return prev.filter((_, current) => current !== index);
+    });
   };
 
   const handleEditSave = async () => {
@@ -158,20 +218,29 @@ export default function ProductDetailPage() {
       setEditError('Title and price are required.');
       return;
     }
+    if (editImages.length + newImageFiles.length === 0) {
+      setEditError('Keep at least one photo on the listing.');
+      return;
+    }
     setEditLoading(true);
     setEditError('');
     try {
-      const res = await api.products.update(product.mongoId ?? product.id, {
-        productName: editForm.title,
-        description: editForm.description,
-        productPrice: Number(editForm.price),
-        productOriginalPrice: editForm.originalPrice ? Number(editForm.originalPrice) : undefined,
-        category: editForm.category || undefined,
-        condition: editForm.condition || undefined,
-        location: editForm.location ? JSON.stringify(editForm.location) : undefined,
-      }) as { data: unknown };
-      setProduct(mapApiProduct(res.data));
-      setEditOpen(false);
+      const payload = new FormData();
+      payload.append('productName', editForm.title);
+      payload.append('description', editForm.description);
+      payload.append('productPrice', String(Number(editForm.price)));
+      if (editForm.originalPrice) payload.append('productOriginalPrice', String(Number(editForm.originalPrice)));
+      if (editForm.category) payload.append('category', editForm.category);
+      if (editForm.condition) payload.append('condition', editForm.condition);
+      if (editForm.location) payload.append('location', JSON.stringify(editForm.location));
+      payload.append('existingImages', JSON.stringify(editImages));
+      newImageFiles.forEach(file => payload.append('images', file));
+
+      const res = await api.products.update(product.mongoId ?? product.id, payload) as { data: unknown };
+      const updatedProduct = mapApiProduct(res.data);
+      setProduct(updatedProduct);
+      setActiveImage(0);
+      closeEdit();
     } catch (err) {
       setEditError((err as Error).message ?? 'Failed to save. Try again.');
     } finally {
@@ -302,10 +371,34 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-brown-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-brown-400 text-sm">Loading product…</p>
+      <div className="min-h-screen bg-cream-100 text-brown-900">
+        <section className="border-b border-cream-300 bg-cream-50">
+          <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+            <Skeleton className="mb-6 h-5 w-32" />
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
+              <div>
+                <Skeleton className="h-4 w-44" />
+                <Skeleton className="mt-3 h-12 w-full max-w-2xl" />
+                <Skeleton className="mt-4 h-5 w-80 max-w-full" />
+              </div>
+              <Skeleton className="h-28 rounded-xl" />
+            </div>
+          </div>
+        </section>
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
+          <div>
+            <Skeleton className="aspect-[4/3] rounded-2xl" />
+            <div className="mt-3 grid grid-cols-4 gap-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="aspect-square rounded-xl" />
+              ))}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-40 rounded-2xl" />
+            <Skeleton className="h-24 rounded-2xl" />
+            <Skeleton className="h-12 rounded-xl" />
+          </div>
         </div>
       </div>
     );
@@ -639,8 +732,8 @@ export default function ProductDetailPage() {
       </Modal>
 
       {/* ── Edit listing modal ── */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Listing" maxWidth="max-w-lg">
-        <div className="space-y-4">
+      <Modal open={editOpen} onClose={closeEdit} title="Edit Listing" maxWidth="max-w-2xl">
+        <div className="max-h-[calc(100vh-10rem)] space-y-4 overflow-y-auto pr-1">
           <div>
             <label className="block text-sm font-medium text-brown-700 mb-1.5">Title</label>
             <input
@@ -710,13 +803,56 @@ export default function ProductDetailPage() {
             />
           </div>
 
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <label className="block text-sm font-medium text-brown-700">Photos</label>
+              <span className="text-xs font-medium text-brown-300">{editImages.length + newImageFiles.length}/5</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {editImages.map((image, index) => (
+                <div key={`${image.publicId ?? image.url}-${index}`} className="relative aspect-square overflow-hidden rounded-xl border border-cream-200 bg-cream-100">
+                  <img src={image.url} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeExistingEditImage(index)}
+                    className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-brown-900/85 text-white shadow-sm hover:bg-brown-900"
+                    aria-label="Remove photo"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              {newImagePreviews.map((preview, index) => (
+                <div key={preview} className="relative aspect-square overflow-hidden rounded-xl border border-cream-200 bg-cream-100">
+                  <img src={preview} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeNewEditImage(index)}
+                    className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-brown-900/85 text-white shadow-sm hover:bg-brown-900"
+                    aria-label="Remove new photo"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              {editImages.length + newImageFiles.length < 5 && (
+                <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-brown-200 bg-cream-50 text-brown-500 transition hover:border-brown-400 hover:bg-cream-100">
+                  <ImagePlus size={22} />
+                  <span className="mt-1 text-xs font-medium">Add</span>
+                  <input type="file" accept="image/*" multiple onChange={handleAddEditImages} className="sr-only" />
+                </label>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-brown-300">Keep at least one clear photo. New photos upload when you save.</p>
+          </div>
+
           {editError && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">{editError}</div>
           )}
 
           <div className="flex gap-3 pt-1">
             <Button onClick={handleEditSave} loading={editLoading} className="flex-1">Save Changes</Button>
-            <Button variant="secondary" onClick={() => setEditOpen(false)} className="flex-1">Cancel</Button>
+            <Button variant="secondary" onClick={closeEdit} className="flex-1">Cancel</Button>
           </div>
         </div>
       </Modal>

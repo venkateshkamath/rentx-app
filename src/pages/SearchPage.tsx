@@ -2,15 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/products/ProductCard';
+import Skeleton from '../components/ui/Skeleton';
 import type { Category, Condition, Product } from '../types';
 import { api } from '../lib/api';
 import { mapApiProduct } from '../lib/mapProduct';
+import { useAuth } from '../context/AuthContext';
 
 const CATEGORIES: Category[] = ['Electronics', 'Furniture', 'Clothing', 'Books', 'Sports', 'Appliances', 'Vehicles', 'Tools', 'Art', 'Other'];
 const CONDITIONS: Condition[] = ['Like New', 'Good', 'Fair', 'Used'];
 const PRICE_STEP = 50;
 
 export default function SearchPage() {
+  const { user } = useAuth();
+  const currentUserId = user?.id;
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [apiLoaded, setApiLoaded] = useState(false);
@@ -28,18 +32,25 @@ export default function SearchPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    let active = true;
     api.products.getAll()
       .then(res => {
+        if (!active) return;
         const mapped = (res.data as unknown[]).map(mapApiProduct);
         setProducts(mapped);
         setLoadError('');
         setApiLoaded(true);
       })
       .catch(() => {
+        if (!active) return;
         setProducts([]);
         setLoadError('Could not load rentals from the API.');
         setApiLoaded(true);
       });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const priceSliderMax = useMemo(() => {
@@ -99,7 +110,7 @@ export default function SearchPage() {
   };
 
   const filtered = useMemo(() => {
-    let list = [...products];
+    let list = currentUserId ? products.filter(product => product.ownerId !== currentUserId) : [...products];
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter(product =>
@@ -119,7 +130,7 @@ export default function SearchPage() {
     if (sortBy === 'rating') list.sort((a, b) => b.rating - a.rating);
 
     return list;
-  }, [maxPrice, query, selectedCategories, selectedCityPlaceId, selectedConditions, sortBy, products]);
+  }, [maxPrice, query, selectedCategories, selectedCityPlaceId, selectedConditions, sortBy, products, currentUserId]);
 
   const renderFilterSidebar = () => (
     <aside className="w-full space-y-6">
@@ -218,6 +229,35 @@ export default function SearchPage() {
         </button>
       )}
     </aside>
+  );
+
+  const renderProductSkeletons = () => (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div key={index} className="overflow-hidden rounded-xl border border-cream-300 bg-cream-50">
+          <Skeleton className="aspect-[4/3] rounded-none" />
+          <div className="space-y-3 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+              <Skeleton className="h-7 w-14 rounded-md" />
+            </div>
+            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-3 w-3/4" />
+            <div className="border-y border-cream-300 py-3">
+              <div className="flex justify-between gap-4">
+                <Skeleton className="h-9 w-24" />
+                <Skeleton className="h-9 w-20" />
+              </div>
+            </div>
+            <Skeleton className="h-8 w-full rounded-md" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 
   return (
@@ -327,7 +367,9 @@ export default function SearchPage() {
           </div>
 
           <div className="min-w-0">
-            {filtered.length > 0 ? (
+            {!apiLoaded ? (
+              renderProductSkeletons()
+            ) : filtered.length > 0 ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {filtered.map(product => <ProductCard key={product.id} product={product} />)}
               </div>

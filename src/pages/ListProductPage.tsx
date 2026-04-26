@@ -387,7 +387,7 @@ export default function ListProductPage() {
                 Your item is now live on RentX. Renters can discover and contact you directly.
               </p>
               <div className="flex gap-3 justify-center">
-                <Button onClick={() => navigate('/')}>Browse Listings</Button>
+                <Button onClick={() => navigate('/search')}>Browse Listings</Button>
                 <Button
                   variant="secondary"
                   onClick={() => {

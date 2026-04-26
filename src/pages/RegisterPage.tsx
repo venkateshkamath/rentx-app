@@ -4,7 +4,9 @@ import { Eye, EyeOff, ArrowRight, Mail, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import LocationAutocomplete from '../components/ui/LocationAutocomplete';
+import PasswordChecklist from '../components/ui/PasswordChecklist';
 import type { LocationData } from '../types';
+import { getPasswordIssues } from '../lib/passwordPolicy';
 
 type Step = 'details' | 'otp' | 'success';
 
@@ -12,18 +14,27 @@ interface FormData {
   name: string;
   username: string;
   email: string;
-  phone: string;
+  phoneCountryCode: string;
+  phoneNumber: string;
   location: LocationData | null;
   password: string;
   confirmPassword: string;
 }
+
+const COUNTRY_CODES = [
+  { code: '+91', label: 'IN' },
+  { code: '+1', label: 'US' },
+  { code: '+44', label: 'UK' },
+  { code: '+971', label: 'AE' },
+  { code: '+65', label: 'SG' },
+];
 
 export default function RegisterPage() {
   const { register, sendOtp, verifyOTP } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('details');
   const [form, setForm] = useState<FormData>({
-    name: '', username: '', email: '', phone: '', location: null, password: '', confirmPassword: '',
+    name: '', username: '', email: '', phoneCountryCode: '+91', phoneNumber: '', location: null, password: '', confirmPassword: '',
   });
   const [showPw, setShowPw] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '']);
@@ -43,7 +54,10 @@ export default function RegisterPage() {
 
   const handleDetailsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.username || !form.email || !form.phone || !form.location || !form.password) {
+    const phoneDigits = form.phoneNumber.replace(/\D/g, '');
+    const fullPhone = `${form.phoneCountryCode}${phoneDigits}`;
+
+    if (!form.name || !form.username || !form.email || !phoneDigits || !form.location || !form.password) {
       setError('All fields are required.');
       return;
     }
@@ -51,7 +65,16 @@ export default function RegisterPage() {
       setError('Passwords do not match.');
       return;
     }
-    if (form.phone.replace(/\D/g, '').length < 10) {
+    const passwordIssues = getPasswordIssues(form.password, {
+      email: form.email,
+      username: form.username,
+      name: form.name,
+    });
+    if (passwordIssues.length > 0) {
+      setError(`Password requirement missing: ${passwordIssues[0]}.`);
+      return;
+    }
+    if (phoneDigits.length < 6 || phoneDigits.length > 15 || (form.phoneCountryCode === '+91' && phoneDigits.length !== 10)) {
       setError('Enter a valid phone number.');
       return;
     }
@@ -63,7 +86,7 @@ export default function RegisterPage() {
       username: form.username,
       email: form.email.toLowerCase().trim(),
       password: form.password,
-      phone: form.phone,
+      phone: fullPhone,
       location: form.location!,
     });
 
@@ -142,22 +165,34 @@ export default function RegisterPage() {
           <div className={step === 'otp' ? 'px-8 py-10 sm:px-16' : 'p-8'}>
 
           {/* Progress indicator */}
-          <div className="mx-auto mb-8 flex max-w-md items-center gap-4">
-            {(['details', 'otp', 'success'] as Step[]).map((s, i) => (
-              <div key={s} className="flex flex-1 items-center gap-4">
-                <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
-                  step === s ? 'bg-brown-600 text-white' :
-                  ['details', 'otp', 'success'].indexOf(step) > i ? 'bg-brown-200 text-brown-600' :
-                  'bg-cream-300 text-brown-300'
-                }`}>
-                  {['details', 'otp', 'success'].indexOf(step) > i ? '✓' : i + 1}
-                </div>
-                {i < 2 && <div className={`flex-1 h-0.5 rounded-full transition-all ${
-                  ['details', 'otp', 'success'].indexOf(step) > i ? 'bg-brown-300' : 'bg-cream-300'
-                }`} />}
+          {(() => {
+            const steps: Step[] = ['details', 'otp', 'success'];
+            const labels = ['Details', 'Verify', 'Done'];
+            const stepIdx = steps.indexOf(step);
+            return (
+              <div className="mx-auto mb-8 grid w-full max-w-[21rem] grid-cols-[auto_minmax(3rem,1fr)_auto_minmax(3rem,1fr)_auto] items-start">
+                {steps.map((s, i) => (
+                  <div key={s} className="contents">
+                    <div className="flex min-w-14 flex-col items-center gap-1.5">
+                      <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-all ${
+                        i < stepIdx   ? 'bg-brown-500 text-white' :
+                        i === stepIdx ? 'bg-brown-700 text-white' :
+                                        'bg-cream-300 text-brown-400'
+                      }`}>
+                        {i < stepIdx ? '✓' : i + 1}
+                      </div>
+                      <span className={`text-center text-xs font-600 ${i === stepIdx ? 'text-brown-700' : 'text-brown-300'}`}>
+                        {labels[i]}
+                      </span>
+                    </div>
+                    {i < steps.length - 1 && (
+                      <div className={`mx-3 mt-3.5 h-0.5 rounded-full transition-all ${i < stepIdx ? 'bg-brown-400' : 'bg-cream-300'}`} />
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
 
           {/* Step 1: Details */}
           {step === 'details' && (
@@ -204,26 +239,42 @@ export default function RegisterPage() {
                   <p className="text-xs text-brown-300 mt-1">OTP will be sent to this email</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-brown-700 mb-1.5">Mobile Number</label>
+                <div>
+                  <label className="block text-sm font-medium text-brown-700 mb-1.5">Mobile Number</label>
+                  <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2">
+                    <select
+                      value={form.phoneCountryCode}
+                      onChange={e => setForm(f => ({ ...f, phoneCountryCode: e.target.value }))}
+                      className="input-field px-3"
+                      aria-label="Country code"
+                    >
+                      {COUNTRY_CODES.map(country => (
+                        <option key={country.code} value={country.code}>
+                          {country.label} {country.code}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       type="tel"
-                      value={form.phone}
-                      onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                      placeholder="+91 98765 43210"
+                      inputMode="numeric"
+                      value={form.phoneNumber}
+                      onChange={e => setForm(f => ({ ...f, phoneNumber: e.target.value.replace(/[^\d\s-]/g, '') }))}
+                      placeholder="98765 43210"
                       className="input-field"
+                      autoComplete="tel-national"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-brown-700 mb-1.5">Location / City</label>
-                    <LocationAutocomplete
-                      value={form.location}
-                      onChange={loc => setForm(f => ({ ...f, location: loc }))}
-                      placeholder="Search your city…"
-                      className="input-field"
-                    />
-                  </div>
+                  <p className="text-xs text-brown-300 mt-1">Saved with country code for calls and chat requests.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-brown-700 mb-1.5">Location / City</label>
+                  <LocationAutocomplete
+                    value={form.location}
+                    onChange={loc => setForm(f => ({ ...f, location: loc }))}
+                    placeholder="Search your city…"
+                    className="input-field"
+                  />
                 </div>
 
                 <div>
@@ -233,12 +284,19 @@ export default function RegisterPage() {
                       type={showPw ? 'text' : 'password'}
                       value={form.password}
                       onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                      placeholder="Min 6 characters"
+                      placeholder="Strong password"
                       className="input-field pr-11"
+                      autoComplete="new-password"
                     />
                     <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600">
                       {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
+                  </div>
+                  <div className="mt-2">
+                    <PasswordChecklist
+                      password={form.password}
+                      context={{ email: form.email, username: form.username, name: form.name }}
+                    />
                   </div>
                 </div>
 

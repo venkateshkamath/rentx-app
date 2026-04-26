@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight, Mail, CheckCircle2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import RentXLogo from '../components/ui/RentXLogo';
+import PasswordChecklist from '../components/ui/PasswordChecklist';
 import { api } from '../lib/api';
+import { getPasswordIssues } from '../lib/passwordPolicy';
 
 type Step = 'email' | 'otp' | 'password' | 'done';
 
@@ -106,7 +108,11 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError('');
     if (!newPassword) { setError('New password is required.'); return; }
-    if (newPassword.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    const passwordIssues = getPasswordIssues(newPassword, { email });
+    if (passwordIssues.length > 0) {
+      setError(`Password requirement missing: ${passwordIssues[0]}.`);
+      return;
+    }
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
     if (!resetToken) { setError('Reset session expired. Please verify OTP again.'); setStep('otp'); return; }
     setLoading(true);
@@ -275,7 +281,7 @@ export default function ForgotPasswordPage() {
                     type={showPw ? 'text' : 'password'}
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
-                    placeholder="Min. 6 characters"
+                    placeholder="Strong password"
                     className="input-field pr-11"
                     autoComplete="new-password"
                     autoFocus
@@ -283,6 +289,9 @@ export default function ForgotPasswordPage() {
                   <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-400 hover:text-brown-600 transition-colors">
                     {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
+                </div>
+                <div className="mt-2">
+                  <PasswordChecklist password={newPassword} context={{ email }} />
                 </div>
               </div>
 

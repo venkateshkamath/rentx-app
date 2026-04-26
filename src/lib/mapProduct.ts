@@ -15,7 +15,7 @@ export function mapApiProduct(p: any): Product {
     title: p.productName ?? 'Untitled',
     description: p.description ?? '',
     images: Array.isArray(p.images) && p.images.length > 0
-      ? p.images.map((img: { url: string }) => ({ url: img.url }))
+      ? p.images.map((img: { url: string; publicId?: string }) => ({ url: img.url, publicId: img.publicId }))
       : [{ url: 'https://placehold.co/600x400?text=No+Image' }],
     price: p.rentPrice ?? p.productPrice ?? 0,
     originalPrice: p.productOriginalPrice ?? 0,
