@@ -95,4 +95,5 @@ export interface AuthUser {
   phone: string;
   location?: LocationData;
   createdAt?: string;
+  isVerified?: boolean;
 }

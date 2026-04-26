@@ -353,7 +353,7 @@ export default function SearchPage() {
 
         <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
           <div className="hidden lg:block">
-            <div className="sticky top-24 border-r border-cream-300 pr-5">
+            <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto border-r border-cream-300 pr-5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-sm font-900 uppercase tracking-[0.08em] text-brown-900">Filters</h2>
                 {activeFilterCount > 0 && (
