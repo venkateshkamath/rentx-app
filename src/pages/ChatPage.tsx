@@ -2,12 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Send, ArrowLeft, Package, Circle, ImagePlus, X, Loader2,
-  MessageCircle, Bot, Check, XCircle, Clock, AlertCircle, MapPin,
+  MessageCircle, Bot, Check, XCircle, Clock, AlertCircle, MapPin, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import UserAvatar from '../components/ui/UserAvatar';
+import Modal from '../components/ui/Modal';
+import Button from '../components/ui/Button';
 
 /* ─── Types ─── */
 type ChatStatus = 'pending' | 'active' | 'rejected' | 'disabled' | null;
@@ -106,8 +108,11 @@ export default function ChatPage() {
   const [joinError, setJoinError]         = useState('');
   const [connectFailed, setConnectFailed] = useState(false);
 
-  /* ── Accept/Reject loading ── */
+  /* ── Accept/Reject/Delete loading ── */
   const [requestActionLoading, setRequestActionLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen]       = useState(false);
+  const [deleteLoading, setDeleteLoading]               = useState(false);
+  const [deleteError, setDeleteError]                   = useState('');
 
   /* ── Unread counts ── */
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -394,6 +399,28 @@ export default function ChatPage() {
   }
 
   /* ── Actions ── */
+  const handleDeleteChat = async () => {
+    if (!activeChatId) return;
+    setDeleteError('');
+    setDeleteLoading(true);
+    try {
+      const res = await api.chat.delete(activeChatId);
+      if (res.success) {
+        setChatList(prev => prev.filter(c => c.chatId !== activeChatId));
+        setActiveChatId(null);
+        setActiveChat(null);
+        setMobileView('list');
+        setDeleteConfirmOpen(false);
+      } else {
+        setDeleteError(res.message || "Failed to delete chat.");
+      }
+    } catch (err) {
+      setDeleteError((err as Error).message || "Failed to delete chat.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const sendMessage = () => {
     if ((!input.trim() && !pendingImage) || !activeChat || !user) return;
     if (chatStatus !== 'active') return;
@@ -708,6 +735,16 @@ export default function ChatPage() {
                   <Package size={12} /> View Item
                 </button>
               )}
+
+              {activeChatId && (
+                <button
+                  onClick={() => { setDeleteError(''); setDeleteConfirmOpen(true); }}
+                  className="flex items-center gap-1.5 p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                  title="Delete Chat"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
 
             {/* Status banner */}
@@ -972,6 +1009,38 @@ export default function ChatPage() {
           </>
         )}
       </div>
+
+      {/* ══ DELETE CONFIRM MODAL ══ */}
+      <Modal open={deleteConfirmOpen} onClose={() => !deleteLoading && setDeleteConfirmOpen(false)} title="Delete Chat" maxWidth="max-w-md">
+        <div className="space-y-4">
+          <p className="text-brown-700 text-sm">
+            Are you sure you want to permanently delete this conversation? This action cannot be undone.
+          </p>
+          {deleteError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">
+              {deleteError}
+            </div>
+          )}
+          <div className="flex gap-3 pt-2">
+            <Button
+              onClick={handleDeleteChat}
+              loading={deleteLoading}
+              className="flex-1 bg-red-600 hover:bg-red-700 border-transparent text-white"
+            >
+              Delete
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={deleteLoading}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 }

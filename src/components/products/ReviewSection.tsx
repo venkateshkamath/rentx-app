@@ -125,6 +125,7 @@ export default function ReviewSection({ productId, isOwner = false }: ReviewSect
       .finally(() => setReviewsLoading(false));
   }, [productId]);
 
+
   const checkReviewStatus = useCallback(() => {
     if (isAuthenticated) {
       api.reviews.checkCanReview(productId)
@@ -140,6 +141,9 @@ export default function ReviewSection({ productId, isOwner = false }: ReviewSect
     });
   }, [fetchReviews, checkReviewStatus]);
 
+  useEffect(() => { fetchReviews(); }, [fetchReviews]);
+
+
   /* ── Derived ── */
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
@@ -152,6 +156,7 @@ export default function ReviewSection({ productId, isOwner = false }: ReviewSect
   }));
 
   const canReview = canReviewStatus && !submitted;
+
 
   /* ── Validation ── */
   const validate = () => {
@@ -192,7 +197,9 @@ export default function ReviewSection({ productId, isOwner = false }: ReviewSect
     try {
       await api.reviews.deleteReview(reviewId);
       fetchReviews(); // Refresh list from server
+
       checkReviewStatus(); // Re-check if they can review
+
       // If user deleted their own review, allow them to write a new one
       setSubmitted(false);
     } catch {

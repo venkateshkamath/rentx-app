@@ -127,6 +127,7 @@ export const api = {
         body: JSON.stringify({ email }),
       }),
 
+
     confirmOtp: (email: string, otp: string, purpose?: string) =>
       request("/auth/confirm-otp", {
         method: "POST",
@@ -156,15 +157,17 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
+
   },
 
   chat: {
     getAll: () => request<{ success: boolean; data: unknown[] }>("/chat"),
     uploadImage: (formData: FormData) =>
-      request<{ success: boolean; url: string; publicId: string }>(
-        "/chat/image",
-        { method: "POST", body: formData },
-      ),
+
+      request<{ success: boolean; url: string; publicId: string }>('/chat/image', { method: 'POST', body: formData }),
+    delete: (chatId: string) =>
+      request<{ success: boolean; message: string }>(`/chat/${chatId}`, { method: 'DELETE' }),
+
   },
 
   products: {
@@ -243,8 +246,10 @@ export const api = {
       }),
 
     checkCanReview: (productId: string) =>
+
       request<{ success: boolean; canReview: boolean }>(
         `/reviews/${productId}/can-review`,
       ),
+
   },
 };
