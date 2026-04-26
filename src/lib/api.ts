@@ -70,10 +70,10 @@ export const api = {
         body: JSON.stringify({ email, otp, ...(purpose && { purpose }) }),
       }),
 
-    resetPassword: (email: string, resetToken: string, newPassword: string) =>
+    resetPassword: (email: string, otp: string, newPassword: string) =>
       request("/auth/reset-password", {
         method: "POST",
-        body: JSON.stringify({ email, resetToken, newPassword }),
+        body: JSON.stringify({ email, otp, newPassword }),
       }),
 
     updateAvatar: (formData: FormData) =>
