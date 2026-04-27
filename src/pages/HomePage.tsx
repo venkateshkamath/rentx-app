@@ -50,7 +50,7 @@ export default function HomePage() {
           <div className="flex flex-col justify-center">
             <span className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-cream-300 bg-white/75 px-4 py-2 text-xs font-800 text-brown-500 shadow-soft backdrop-blur">
               <Sparkles size={14} />
-              Rent locally, without buying everything
+              Why buy when you can rent from people like you?
             </span>
 
             <h1 className="max-w-3xl text-5xl font-900 leading-[0.98] text-brown-900 md:text-6xl lg:text-7xl">
